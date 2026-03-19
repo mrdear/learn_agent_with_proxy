@@ -187,7 +187,15 @@ export function LogsPage({
           <SheetHeader>
             <SheetTitle>Request Detail #{selectedLog?.id}</SheetTitle>
           </SheetHeader>
-          {selectedLog && <LogDetail log={selectedLog} />}
+          {selectedLog && (
+            <LogDetail
+              log={selectedLog}
+              onReplayComplete={(replayed) => {
+                setSelectedLog(replayed);
+                void loadLogs();
+              }}
+            />
+          )}
         </SheetContent>
       </Sheet>
     </div>

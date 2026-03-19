@@ -131,7 +131,16 @@ export function LogTable({
                     }
                   />
                 </TableCell>
-                <TableCell className="font-mono text-xs">{log.id}</TableCell>
+                <TableCell className="font-mono text-xs">
+                  <div className="flex flex-col gap-1">
+                    <span>{log.id}</span>
+                    {log.source_log_id ? (
+                      <Badge variant="outline" className="w-fit text-[10px]">
+                        from #{log.source_log_id}
+                      </Badge>
+                    ) : null}
+                  </div>
+                </TableCell>
                 <TableCell>
                   <ProviderBadge provider={log.provider} />
                 </TableCell>

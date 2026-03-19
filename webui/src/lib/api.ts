@@ -5,6 +5,7 @@ export interface LogEntry {
   method: string;
   request_headers: string | null;
   request_body: string | null;
+  source_log_id: number | null;
   response_status: number | null;
   response_body: string | null;
   response_body_finish: string | null;
@@ -24,6 +25,12 @@ export interface LogListResponse {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface ReplayLogOverrides {
+  endpoint?: string;
+  method?: string;
+  request_body?: string | null;
 }
 
 const BASE = "/api";
@@ -53,5 +60,25 @@ export async function fetchLogById(id: number): Promise<LogEntry> {
 
 export async function fetchModels(): Promise<string[]> {
   const res = await fetch(`${BASE}/models`);
+  return res.json();
+}
+
+export async function replayLog(
+  id: number,
+  overrides?: ReplayLogOverrides
+): Promise<LogEntry> {
+  const res = await fetch(`${BASE}/logs/${id}/replay`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: overrides ? JSON.stringify(overrides) : "",
+  });
+
+  if (!res.ok) {
+    const message = await res.text();
+    throw new Error(message || "Failed to replay log");
+  }
+
   return res.json();
 }

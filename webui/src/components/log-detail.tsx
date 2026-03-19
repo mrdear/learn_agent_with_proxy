@@ -1,13 +1,19 @@
-import { useState, useMemo } from "react";
-import type { LogEntry } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import type { LogEntry, ReplayLogOverrides } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { replayLog } from "@/lib/api";
+import { toast } from "sonner";
+import { LogRelayPanel } from "@/components/log-relay-panel";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 
 interface LogDetailProps {
   log: LogEntry;
+  showActions?: boolean;
+  onReplayComplete?: (log: LogEntry) => void;
 }
 
 // ── Extraction helpers ──
@@ -249,130 +255,215 @@ function ToolsPanel({ tools }: { tools: ToolDef[] }) {
 
 // ── Main component ──
 
-export function LogDetail({ log }: LogDetailProps) {
+export function LogDetail({
+  log,
+  showActions = true,
+  onReplayComplete,
+}: LogDetailProps) {
   const body = parseBody(log.request_body);
   const messages = extractMessages(body);
   const systemPrompt = extractSystemPrompt(body, log.provider);
   const tools = extractTools(body);
   const params = extractRequestParams(body);
+  const nonSystemMessages =
+    messages?.filter((m) => m.role !== "system" && m.role !== "developer") ?? [];
 
-  const nonSystemMessages = messages?.filter((m) => m.role !== "system" && m.role !== "developer") ?? [];
+  const [activeTab, setActiveTab] = useState("messages");
+  const [replaying, setReplaying] = useState(false);
+
+  useEffect(() => {
+    setActiveTab("messages");
+    setReplaying(false);
+  }, [log.id]);
+
+  const handleReplay = async (overrides?: ReplayLogOverrides): Promise<void> => {
+    const mode = overrides ? "relay" : "replay";
+    setReplaying(true);
+
+    try {
+      const replayed = await replayLog(log.id, overrides);
+      toast.success(
+        overrides
+          ? `Relayed as #${replayed.id}`
+          : `Replayed as #${replayed.id}`
+      );
+      onReplayComplete?.(replayed);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(mode === "relay" ? `Relay failed: ${message}` : `Replay failed: ${message}`);
+    } finally {
+      setReplaying(false);
+    }
+  };
+
+  const sourceLabel = log.source_log_id ? `#${log.source_log_id}` : "Original";
 
   return (
     <div className="space-y-5 p-4">
-      {/* Meta info */}
-      <div className="grid grid-cols-4 gap-x-4 gap-y-2 text-sm">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm lg:grid-cols-4">
         <div>
-          <span className="text-muted-foreground text-xs">Provider</span>
-          <div><Badge>{log.provider}</Badge></div>
+          <span className="text-xs text-muted-foreground">Provider</span>
+          <div>
+            <Badge variant="default" className="shadow-sm">
+              {log.provider}
+            </Badge>
+          </div>
         </div>
         <div>
-          <span className="text-muted-foreground text-xs">Model</span>
+          <span className="text-xs text-muted-foreground">Model</span>
           <div className="font-mono text-xs">{log.model || "--"}</div>
         </div>
         <div>
-          <span className="text-muted-foreground text-xs">Status</span>
+          <span className="text-xs text-muted-foreground">Status</span>
           <div className="font-mono text-xs">{log.response_status ?? "--"}</div>
         </div>
         <div>
-          <span className="text-muted-foreground text-xs">Streaming</span>
+          <span className="text-xs text-muted-foreground">Streaming</span>
           <div className="text-xs">{log.is_streaming ? "Yes (SSE)" : "No"}</div>
         </div>
         <div>
-          <span className="text-muted-foreground text-xs">Input Tokens</span>
+          <span className="text-xs text-muted-foreground">Input Tokens</span>
           <div className="font-mono text-xs">{log.input_tokens ?? "--"}</div>
         </div>
         <div>
-          <span className="text-muted-foreground text-xs">Output Tokens</span>
+          <span className="text-xs text-muted-foreground">Output Tokens</span>
           <div className="font-mono text-xs">{log.output_tokens ?? "--"}</div>
         </div>
         <div>
-          <span className="text-muted-foreground text-xs">Duration</span>
-          <div className="font-mono text-xs">{log.duration_ms != null ? `${log.duration_ms}ms` : "--"}</div>
+          <span className="text-xs text-muted-foreground">Duration</span>
+          <div className="font-mono text-xs">
+            {log.duration_ms != null ? `${log.duration_ms}ms` : "--"}
+          </div>
         </div>
         <div>
-          <span className="text-muted-foreground text-xs">Time</span>
-          <div className="text-xs">{new Date(log.request_time).toLocaleString("zh-CN")}</div>
+          <span className="text-xs text-muted-foreground">Time</span>
+          <div className="text-xs">
+            {new Date(log.request_time).toLocaleString("zh-CN")}
+          </div>
+        </div>
+        <div>
+          <span className="text-xs text-muted-foreground">Origin</span>
+          <div>
+            <Badge variant={log.source_log_id ? "secondary" : "outline"}>
+              {sourceLabel}
+            </Badge>
+          </div>
         </div>
       </div>
 
       {log.error && (
-        <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3">
+        <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3">
           <p className="text-xs font-medium text-destructive">Error: {log.error}</p>
+        </div>
+      )}
+
+      {showActions && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-primary/15 bg-primary/5 px-3 py-2">
+          <div className="flex flex-col gap-1">
+            <Badge variant="default" className="w-fit shadow-sm">
+              Replay tools
+            </Badge>
+            <p className="text-xs text-muted-foreground">
+              Replay sends the captured request again. Relay opens the editor tab so you
+              can tweak the path, method, or body before resending.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className="shadow-sm"
+              disabled={replaying}
+              onClick={() => {
+                void handleReplay();
+              }}
+            >
+              {replaying ? "Replaying..." : "Replay exact"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={replaying}
+              onClick={() => setActiveTab("relay")}
+            >
+              Open relay
+            </Button>
+          </div>
         </div>
       )}
 
       <Separator />
 
-      <Tabs defaultValue="messages">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="messages">
             Messages {nonSystemMessages.length > 0 && `(${nonSystemMessages.length})`}
           </TabsTrigger>
           <TabsTrigger value="system">System Prompt</TabsTrigger>
-          {tools && (
-            <TabsTrigger value="tools">
-              Tools ({tools.length})
-            </TabsTrigger>
-          )}
+          {tools && <TabsTrigger value="tools">Tools ({tools.length})</TabsTrigger>}
           <TabsTrigger value="params">Params</TabsTrigger>
           <TabsTrigger value="response">Response</TabsTrigger>
           <TabsTrigger value="raw">Raw</TabsTrigger>
+          {showActions && <TabsTrigger value="relay">Relay</TabsTrigger>}
         </TabsList>
 
-        {/* Messages Tab */}
-        <TabsContent value="messages" className="space-y-2 mt-4">
+        <TabsContent value="messages" className="mt-4 space-y-2">
           {nonSystemMessages.length > 0 ? (
             nonSystemMessages.map((msg, i) => (
               <MessageItem key={i} msg={msg} index={i} />
             ))
           ) : (
-            <p className="text-sm text-muted-foreground py-8 text-center">No messages found</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No messages found
+            </p>
           )}
         </TabsContent>
 
-        {/* System Prompt Tab */}
         <TabsContent value="system" className="mt-4">
           {systemPrompt ? (
-            <pre className="bg-muted rounded-md p-4 text-xs overflow-x-auto max-h-[700px] overflow-y-auto whitespace-pre-wrap break-all leading-relaxed">
+            <pre className="max-h-[700px] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted p-4 text-xs leading-relaxed">
               {systemPrompt}
             </pre>
           ) : (
-            <p className="text-sm text-muted-foreground py-8 text-center">No system prompt found</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No system prompt found
+            </p>
           )}
         </TabsContent>
 
-        {/* Tools Tab */}
         {tools && (
           <TabsContent value="tools" className="mt-4">
             <ToolsPanel tools={tools} />
           </TabsContent>
         )}
 
-        {/* Params Tab */}
         <TabsContent value="params" className="mt-4">
           {params ? (
-            <pre className="bg-muted rounded-md p-4 text-xs overflow-x-auto max-h-[600px] overflow-y-auto whitespace-pre-wrap break-all">
+            <pre className="max-h-[600px] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted p-4 text-xs">
               {JSON.stringify(params, null, 2)}
             </pre>
           ) : (
-            <p className="text-sm text-muted-foreground py-8 text-center">No parameters</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No parameters
+            </p>
           )}
         </TabsContent>
 
-        {/* Response Tab */}
         <TabsContent value="response" className="mt-4">
           {log.response_body_finish ? (
-            <pre className="bg-muted rounded-md p-4 text-xs overflow-x-auto max-h-[700px] overflow-y-auto whitespace-pre-wrap break-all leading-relaxed">
+            <pre className="max-h-[700px] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted p-4 text-xs leading-relaxed">
               {log.response_body_finish}
             </pre>
           ) : (
-            <p className="text-sm text-muted-foreground py-8 text-center">No response body</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No response body
+            </p>
           )}
         </TabsContent>
 
-        {/* Raw Tab */}
-        <TabsContent value="raw" className="space-y-4 mt-4">
+        <TabsContent value="raw" className="mt-4 space-y-4">
           <JsonBlock label="Request Headers" data={log.request_headers} />
           <JsonBlock label="Request Body" data={log.request_body} />
           <JsonBlock label="Response Body (Full)" data={log.response_body_finish} />
@@ -380,6 +471,16 @@ export function LogDetail({ log }: LogDetailProps) {
             <JsonBlock label="Streaming Chunks" data={log.response_body} />
           )}
         </TabsContent>
+
+        {showActions && (
+          <TabsContent value="relay" className="mt-4">
+            <LogRelayPanel
+              log={log}
+              disabled={replaying}
+              onRelay={handleReplay}
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

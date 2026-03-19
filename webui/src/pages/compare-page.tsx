@@ -109,7 +109,7 @@ function LogPanel({
       </CardHeader>
       <CardContent className="p-0">
         <div className="max-h-[calc(100vh-20rem)] overflow-auto">
-          <LogDetail log={log} />
+          <LogDetail log={log} showActions={false} />
         </div>
       </CardContent>
     </Card>

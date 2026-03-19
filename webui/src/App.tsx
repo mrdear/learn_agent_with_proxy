@@ -3,7 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { ComparePage } from "@/pages/compare-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { LogsPage } from "@/pages/logs-page";
-import { normalizeRoute, type RoutePath } from "@/lib/routes";
+import { getRouteMeta, normalizeRoute, type RoutePath } from "@/lib/routes";
 
 function useRouteState() {
   const pathname = useSyncExternalStore<RoutePath>(
@@ -41,15 +41,11 @@ function useRouteState() {
 
 function App() {
   const { pathname, navigate } = useRouteState();
+  const currentRoute = getRouteMeta(pathname);
 
   useEffect(() => {
-    document.title =
-      pathname === "/logs"
-        ? "Logs · Learn Agent With Proxy"
-        : pathname === "/compare"
-          ? "Compare · Learn Agent With Proxy"
-          : "Dashboard · Learn Agent With Proxy";
-  }, [pathname]);
+    document.title = `${currentRoute.label} · Learn Agent With Proxy`;
+  }, [currentRoute.label]);
 
   return (
     <AppShell pathname={pathname} onNavigate={navigate}>

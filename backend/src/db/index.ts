@@ -37,11 +37,21 @@ db.exec(`
     -- 附加信息
     model TEXT,
     is_streaming INTEGER DEFAULT 0,
+    source_log_id INTEGER,
     error TEXT,
     
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+function ensureColumn(column: string, ddl: string): void {
+  const columns = db.prepare("PRAGMA table_info(logs)").all() as { name: string }[];
+  if (!columns.some((col) => col.name === column)) {
+    db.exec(ddl);
+  }
+}
+
+ensureColumn("source_log_id", "ALTER TABLE logs ADD COLUMN source_log_id INTEGER");
 
 export interface LogRow {
   id: number;
@@ -60,13 +70,14 @@ export interface LogRow {
   duration_ms: number | null;
   model: string | null;
   is_streaming: number;
+  source_log_id: number | null;
   error: string | null;
   created_at: string;
 }
 
 const insertLog = db.prepare(`
-  INSERT INTO logs (provider, endpoint, method, request_headers, request_body, model, is_streaming, request_time)
-  VALUES (@provider, @endpoint, @method, @request_headers, @request_body, @model, @is_streaming, @request_time)
+  INSERT INTO logs (provider, endpoint, method, request_headers, request_body, model, is_streaming, source_log_id, request_time)
+  VALUES (@provider, @endpoint, @method, @request_headers, @request_body, @model, @is_streaming, @source_log_id, @request_time)
 `);
 
 const updateLogResponse = db.prepare(`
@@ -90,9 +101,13 @@ export function createLog(data: {
   request_body: string | null;
   model: string | null;
   is_streaming: number;
+  source_log_id?: number | null;
   request_time: string;
 }): number {
-  const result = insertLog.run(data);
+  const result = insertLog.run({
+    ...data,
+    source_log_id: data.source_log_id ?? null,
+  });
   return Number(result.lastInsertRowid);
 }
 

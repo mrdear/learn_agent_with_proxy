@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getLogs, getLogById, getModels } from "../db/index.js";
+import { replayLogById, ReplayError, type ReplayOverrides } from "../lib/replay.js";
 
 const api = new Hono();
 
@@ -40,6 +41,51 @@ api.get("/logs/:id", (c) => {
   }
 
   return c.json(log);
+});
+
+// POST /api/logs/:id/replay - replay or relay an existing log
+api.post("/logs/:id/replay", async (c) => {
+  const id = parseInt(c.req.param("id"), 10);
+  if (isNaN(id)) {
+    return c.json({ error: "Invalid ID" }, 400);
+  }
+
+  let overrides: ReplayOverrides = {};
+
+  const rawBody = await c.req.text();
+  if (rawBody.trim()) {
+    try {
+      const parsed = JSON.parse(rawBody) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return c.json({ error: "Invalid request body" }, 400);
+      }
+
+      const payload = parsed as Record<string, unknown>;
+      overrides = {
+        endpoint: typeof payload.endpoint === "string" ? payload.endpoint : undefined,
+        method: typeof payload.method === "string" ? payload.method : undefined,
+        request_body:
+          typeof payload.request_body === "string" || payload.request_body === null
+            ? (payload.request_body as string | null)
+            : undefined,
+      };
+    } catch {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
+  }
+
+  try {
+    const log = await replayLogById(id, overrides, c.req.raw.signal);
+    return c.json(log);
+  } catch (error) {
+    if (error instanceof ReplayError) {
+      const status = error.status as 400 | 404 | 500;
+      return c.json({ error: error.message }, status);
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ error: "Replay failed", message }, 500);
+  }
 });
 
 // GET /api/models - get distinct model names
