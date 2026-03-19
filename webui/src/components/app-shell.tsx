@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { appRoutes, type RoutePath } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 
 interface AppShellProps {
   pathname: RoutePath;
@@ -23,7 +24,8 @@ function RouteButton({
     <Button
       type="button"
       size="sm"
-      variant={active ? "default" : "outline"}
+      variant={active ? "default" : "secondary"}
+      className={cn(active && "shadow-sm")}
       onClick={onClick}
     >
       {label}
@@ -63,7 +65,7 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
                 onClick={() => onNavigate(route.path)}
               />
             ))}
-            <Badge variant="outline" className="font-mono text-[11px]">
+            <Badge variant="default" className="font-mono text-[11px] shadow-sm">
               http://localhost:3000
             </Badge>
           </div>

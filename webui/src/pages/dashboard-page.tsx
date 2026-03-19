@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import type { RoutePath } from "@/lib/routes";
 import {
   ArrowRightIcon,
@@ -81,7 +82,7 @@ function CopyButton({ text }: { text: string }) {
   };
 
   return (
-    <Button type="button" variant="outline" size="xs" onClick={handleCopy}>
+    <Button type="button" variant="default" size="xs" className="shadow-sm" onClick={handleCopy}>
       {copied ? (
         <CheckIcon data-icon="inline-start" />
       ) : (
@@ -125,15 +126,17 @@ function StepCard({
   step,
   title,
   description,
+  tone = "outline",
 }: {
   step: string;
   title: string;
   description: string;
+  tone?: "default" | "secondary" | "outline";
 }) {
   return (
-    <Card>
+    <Card className={cn(tone !== "outline" && "ring-1", tone === "default" && "ring-primary/15 bg-primary/5", tone === "secondary" && "ring-secondary/15 bg-secondary/20")}>
       <CardHeader className="gap-3">
-        <Badge variant="outline" className="w-fit font-mono">
+        <Badge variant={tone} className="w-fit font-mono shadow-sm">
           {step}
         </Badge>
         <div className="flex flex-col gap-1">
@@ -149,18 +152,34 @@ function FactRow({
   label,
   value,
   copyable = false,
+  tone = "outline",
 }: {
   label: string;
   value: string;
   copyable?: boolean;
+  tone?: "default" | "secondary" | "outline";
 }) {
+  const valueToneClass =
+    tone === "default"
+      ? "border-primary/25 bg-primary/10 text-foreground shadow-sm"
+      : tone === "secondary"
+        ? "border-secondary/40 bg-secondary/30 text-foreground"
+        : "border-border bg-muted/30 text-foreground";
+
   return (
     <div className="flex items-center justify-between gap-3 rounded-none border border-border px-3 py-2">
       <div className="flex flex-col gap-1">
         <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
           {label}
         </p>
-        <p className="font-mono text-xs">{value}</p>
+        <div
+          className={cn(
+            "max-w-full rounded-none border px-3 py-1.5 font-mono text-xs leading-5 break-all",
+            valueToneClass
+          )}
+        >
+          {value}
+        </div>
       </div>
       {copyable ? <CopyButton text={value} /> : null}
     </div>
@@ -211,13 +230,13 @@ export function DashboardPage({
   return (
     <div className="flex flex-col gap-6">
       <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-        <Card className="relative overflow-hidden">
+        <Card className="relative overflow-hidden ring-1 ring-primary/10 bg-primary/5">
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -top-10 right-0 size-56 rounded-full bg-foreground/5 blur-3xl" />
             <div className="absolute -bottom-20 left-24 size-72 rounded-full bg-muted/70 blur-3xl" />
           </div>
           <CardHeader className="relative gap-3">
-            <Badge variant="outline" className="w-fit">
+            <Badge variant="default" className="w-fit shadow-sm">
               Setup guide
             </Badge>
             <div className="flex flex-col gap-2">
@@ -231,18 +250,21 @@ export function DashboardPage({
             </div>
           </CardHeader>
           <CardContent className="relative flex flex-wrap items-center gap-3">
-            <Button type="button" onClick={() => onNavigate("/logs")}>
+            <Button type="button" size="lg" className="shadow-sm" onClick={() => onNavigate("/logs")}>
               Open logs
               <ArrowRightIcon data-icon="inline-end" />
             </Button>
-            <Badge variant="secondary" className="gap-1.5">
+            <Button type="button" variant="secondary" size="lg" onClick={() => onNavigate("/compare")}>
+              Compare logs
+            </Button>
+            <Badge variant="default" className="gap-1.5 shadow-sm">
               <LightningIcon data-icon="inline-start" />
               Local proxy
             </Badge>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="ring-1 ring-border/70 bg-card">
           <CardHeader>
             <CardTitle>Connection points</CardTitle>
             <CardDescription>
@@ -250,10 +272,10 @@ export function DashboardPage({
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <FactRow label="Proxy URL" value={PROXY_URL} copyable />
-            <FactRow label="OpenAI route" value="/v1/chat/completions" />
-            <FactRow label="Anthropic route" value="/v1/messages" />
-            <FactRow label="Logs route" value="/logs" />
+            <FactRow label="Proxy URL" value={PROXY_URL} copyable tone="default" />
+            <FactRow label="OpenAI route" value="/v1/chat/completions" tone="secondary" />
+            <FactRow label="Anthropic route" value="/v1/messages" tone="secondary" />
+            <FactRow label="Logs route" value="/logs" tone="outline" />
           </CardContent>
         </Card>
       </section>
@@ -265,16 +287,19 @@ export function DashboardPage({
           step="01"
           title="Run the backend"
           description="Start the proxy server and confirm it is listening on http://localhost:3000."
+          tone="default"
         />
         <StepCard
           step="02"
           title="Swap the base URL"
           description="Point your SDK or HTTP client to the local proxy, but keep your provider API key as-is."
+          tone="secondary"
         />
         <StepCard
           step="03"
           title="Check the logs"
           description="Send one request, then open /logs to verify provider, model, tokens, and streaming chunks."
+          tone="outline"
         />
       </section>
 

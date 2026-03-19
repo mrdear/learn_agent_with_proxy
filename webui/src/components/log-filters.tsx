@@ -70,7 +70,7 @@ export function LogFilters({
         className="w-[280px]"
       />
 
-      <Button variant="outline" size="icon" onClick={onRefresh} title="Refresh">
+      <Button variant="default" size="icon" className="shadow-sm" onClick={onRefresh} title="Refresh">
         <ArrowsClockwise className="h-4 w-4" />
       </Button>
     </div>

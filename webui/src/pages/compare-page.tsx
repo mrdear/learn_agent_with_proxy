@@ -14,6 +14,7 @@ import { LogDetail } from "@/components/log-detail";
 import { Separator } from "@/components/ui/separator";
 import { clearCompareSelection, loadCompareSelection } from "@/lib/compare-selection";
 import type { RoutePath } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ArrowsClockwiseIcon } from "@phosphor-icons/react";
 
 type ComparePair = [LogEntry, LogEntry];
@@ -47,7 +48,14 @@ function ComparisonRow({
   const same = left === right;
 
   return (
-    <div className="grid gap-3 rounded-none border border-border p-3 xl:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-center">
+    <div
+      className={cn(
+        "grid gap-3 rounded-none border p-3 xl:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-center",
+        same
+          ? "border-secondary/30 bg-secondary/10"
+          : "border-destructive/25 bg-destructive/10"
+      )}
+    >
       <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
         {label}
       </div>
@@ -67,15 +75,25 @@ function ComparisonRow({
 function LogPanel({
   title,
   log,
+  tone,
 }: {
   title: string;
   log: LogEntry;
+  tone: "left" | "right";
 }) {
+  const panelClassName =
+    tone === "left"
+      ? "overflow-hidden ring-1 ring-primary/15 bg-primary/5"
+      : "overflow-hidden ring-1 ring-secondary/20 bg-secondary/10";
+
   return (
-    <Card className="overflow-hidden">
+    <Card className={panelClassName}>
       <CardHeader className="border-b border-border/70">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
+            <Badge variant={tone === "left" ? "default" : "secondary"} className="w-fit shadow-sm">
+              {tone === "left" ? "Left" : "Right"}
+            </Badge>
             <CardTitle>{title}</CardTitle>
             <CardDescription className="font-mono">
               #{log.id} · {log.provider} · {log.model || "--"}
@@ -240,11 +258,11 @@ export function ComparePage({
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
+      <Card className="overflow-hidden ring-1 ring-primary/10 bg-primary/5">
         <CardHeader className="border-b border-border/70">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex flex-col gap-1">
-              <Badge variant="outline" className="w-fit">
+              <Badge variant="default" className="w-fit shadow-sm">
                 Compare
               </Badge>
               <CardTitle className="text-2xl">Prompt diff view</CardTitle>
@@ -262,6 +280,7 @@ export function ComparePage({
                 type="button"
                 variant="outline"
                 size="sm"
+                className="shadow-sm"
                 onClick={() => {
                   if (pair) {
                     setLeftId(String(pair[1].id));
@@ -279,7 +298,7 @@ export function ComparePage({
         </CardHeader>
         <CardContent className="flex flex-col gap-4 pt-4">
           <form
-            className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+            className="grid gap-3 rounded-none border border-primary/15 bg-background/80 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
             onSubmit={(event) => {
               event.preventDefault();
               void handleSubmit();
@@ -290,14 +309,16 @@ export function ComparePage({
               placeholder="Left log ID"
               value={leftId}
               onChange={(event) => setLeftId(event.target.value)}
+              className="font-mono"
             />
             <Input
               inputMode="numeric"
               placeholder="Right log ID"
               value={rightId}
               onChange={(event) => setRightId(event.target.value)}
+              className="font-mono"
             />
-            <Button type="submit" disabled={loading || bootstrapping}>
+            <Button type="submit" variant="default" disabled={loading || bootstrapping} className="shadow-sm">
               {loading ? "Loading..." : "Load comparison"}
             </Button>
           </form>
@@ -317,13 +338,21 @@ export function ComparePage({
 
       {pair ? (
         <>
-          <Card>
+          <Card className="ring-1 ring-border/70 bg-card">
             <CardHeader className="border-b border-border/70">
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-2">
                 <CardTitle>Quick diff</CardTitle>
                 <CardDescription>
                   {sameMetrics} of {metrics.length} summary fields match.
                 </CardDescription>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="shadow-sm">
+                    Same {sameMetrics}
+                  </Badge>
+                  <Badge variant="destructive" className="shadow-sm">
+                    Different {metrics.length - sameMetrics}
+                  </Badge>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-3 pt-4">
@@ -341,8 +370,8 @@ export function ComparePage({
           <Separator />
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <LogPanel title="Left log" log={pair[0]} />
-            <LogPanel title="Right log" log={pair[1]} />
+            <LogPanel title="Left log" log={pair[0]} tone="left" />
+            <LogPanel title="Right log" log={pair[1]} tone="right" />
           </div>
         </>
       ) : !loading ? (

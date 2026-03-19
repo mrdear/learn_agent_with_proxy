@@ -104,7 +104,7 @@ export function LogsPage({
         <CardHeader className="border-b border-border/70">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex flex-col gap-1">
-              <Badge variant="outline" className="w-fit">
+              <Badge variant="default" className="w-fit shadow-sm">
                 Captured traffic
               </Badge>
               <CardTitle className="text-2xl">Request log explorer</CardTitle>
@@ -112,15 +112,18 @@ export function LogsPage({
                 Inspect prompts, parameters, token counts, and streamed response chunks.
               </CardDescription>
             </div>
-            <Badge variant="secondary" className="w-fit">
+            <Badge variant="default" className="w-fit shadow-sm">
               {total} records
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4 pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-border px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-primary/15 bg-primary/5 px-3 py-2">
             <div className="flex flex-col gap-1">
-              <Badge variant="outline" className="w-fit">
+              <Badge
+                variant={compareEnabled ? "default" : "secondary"}
+                className="w-fit shadow-sm"
+              >
                 {selectedIds.length} selected
               </Badge>
               <p className="text-xs text-muted-foreground">{selectedLabel}</p>
@@ -135,6 +138,7 @@ export function LogsPage({
                 type="button"
                 size="sm"
                 disabled={!compareEnabled}
+                className="shadow-sm"
                 onClick={handleCompare}
               >
                 Compare selected

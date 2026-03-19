@@ -118,7 +118,7 @@ export function LogTable({
                 key={log.id}
                 className={cn(
                   "cursor-pointer hover:bg-muted/50",
-                  selectedIds.includes(log.id) && "bg-muted/30"
+                  selectedIds.includes(log.id) && "bg-primary/5"
                 )}
                 onClick={() => onSelect(log)}
               >
