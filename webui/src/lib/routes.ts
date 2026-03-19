@@ -1,4 +1,4 @@
-export type RoutePath = "/" | "/logs";
+export type RoutePath = "/" | "/logs" | "/compare";
 
 export const appRoutes = [
   {
@@ -9,8 +9,20 @@ export const appRoutes = [
     path: "/logs" as const,
     label: "Logs",
   },
+  {
+    path: "/compare" as const,
+    label: "Compare",
+  },
 ] as const;
 
 export function normalizeRoute(pathname: string): RoutePath {
-  return pathname === "/logs" || pathname.startsWith("/logs/") ? "/logs" : "/";
+  if (pathname === "/logs" || pathname.startsWith("/logs/")) {
+    return "/logs";
+  }
+
+  if (pathname === "/compare" || pathname.startsWith("/compare/")) {
+    return "/compare";
+  }
+
+  return "/";
 }

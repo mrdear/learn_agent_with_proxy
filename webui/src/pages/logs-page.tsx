@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { type LogEntry, fetchLogs, fetchModels, type LogListResponse } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -12,8 +13,14 @@ import { LogTable } from "@/components/log-table";
 import { LogDetail } from "@/components/log-detail";
 import { LogFilters } from "@/components/log-filters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { saveCompareSelection } from "@/lib/compare-selection";
+import type { RoutePath } from "@/lib/routes";
 
-export function LogsPage() {
+export function LogsPage({
+  onNavigate,
+}: {
+  onNavigate: (path: RoutePath) => void;
+}) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -23,7 +30,19 @@ export function LogsPage() {
   const [search, setSearch] = useState<string>("");
   const [models, setModels] = useState<string[]>([]);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const compareEnabled = selectedIds.length === 2;
+  const selectedLabel = useMemo(() => {
+    if (selectedIds.length === 0) return "Select two logs to compare";
+    if (selectedIds.length === 1) return "Select one more log to compare";
+    if (selectedIds.length === 2) {
+      return `Ready to compare #${selectedIds[0]} and #${selectedIds[1]}`;
+    }
+
+    return `Selected ${selectedIds.length} logs. Keep only two to compare.`;
+  }, [selectedIds]);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -55,6 +74,30 @@ export function LogsPage() {
 
   const totalPages = Math.ceil(total / pageSize);
 
+  const handleToggleSelect = useCallback((log: LogEntry, checked: boolean) => {
+    setSelectedIds((current) => {
+      if (checked) {
+        if (current.includes(log.id)) {
+          return current;
+        }
+        return [...current, log.id];
+      }
+
+      return current.filter((id) => id !== log.id);
+    });
+  }, []);
+
+  const handleCompare = useCallback(() => {
+    if (!compareEnabled) return;
+
+    saveCompareSelection([selectedIds[0], selectedIds[1]]);
+    onNavigate("/compare");
+  }, [compareEnabled, onNavigate, selectedIds]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds([]);
+  }, []);
+
   return (
     <div className="flex flex-col gap-4">
       <Card>
@@ -75,6 +118,30 @@ export function LogsPage() {
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-border px-3 py-2">
+            <div className="flex flex-col gap-1">
+              <Badge variant="outline" className="w-fit">
+                {selectedIds.length} selected
+              </Badge>
+              <p className="text-xs text-muted-foreground">{selectedLabel}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedIds.length > 0 && (
+                <Button type="button" variant="outline" size="sm" onClick={clearSelection}>
+                  Clear selection
+                </Button>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                disabled={!compareEnabled}
+                onClick={handleCompare}
+              >
+                Compare selected
+              </Button>
+            </div>
+          </div>
+
           <LogFilters
             provider={provider}
             model={model}
@@ -100,7 +167,9 @@ export function LogsPage() {
             loading={loading}
             page={page}
             totalPages={totalPages}
+            selectedIds={selectedIds}
             onPageChange={setPage}
+            onToggleSelect={handleToggleSelect}
             onSelect={setSelectedLog}
           />
         </CardContent>

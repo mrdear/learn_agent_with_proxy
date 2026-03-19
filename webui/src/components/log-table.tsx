@@ -1,6 +1,8 @@
 import type { LogEntry } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -17,7 +19,9 @@ interface LogTableProps {
   loading: boolean;
   page: number;
   totalPages: number;
+  selectedIds: number[];
   onPageChange: (page: number) => void;
+  onToggleSelect: (log: LogEntry, checked: boolean) => void;
   onSelect: (log: LogEntry) => void;
 }
 
@@ -57,7 +61,16 @@ function formatTokens(input: number | null, output: number | null): string {
   return `${input ?? "?"}/${output ?? "?"}`;
 }
 
-export function LogTable({ logs, loading, page, totalPages, onPageChange, onSelect }: LogTableProps) {
+export function LogTable({
+  logs,
+  loading,
+  page,
+  totalPages,
+  selectedIds,
+  onPageChange,
+  onToggleSelect,
+  onSelect,
+}: LogTableProps) {
   if (loading) {
     return (
       <div className="space-y-2">
@@ -85,6 +98,9 @@ export function LogTable({ logs, loading, page, totalPages, onPageChange, onSele
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[44px]">
+                <span className="sr-only">Select</span>
+              </TableHead>
               <TableHead className="w-[60px]">ID</TableHead>
               <TableHead className="w-[100px]">Provider</TableHead>
               <TableHead className="w-[80px]">Status</TableHead>
@@ -100,9 +116,21 @@ export function LogTable({ logs, loading, page, totalPages, onPageChange, onSele
             {logs.map((log) => (
               <TableRow
                 key={log.id}
-                className="cursor-pointer hover:bg-muted/50"
+                className={cn(
+                  "cursor-pointer hover:bg-muted/50",
+                  selectedIds.includes(log.id) && "bg-muted/30"
+                )}
                 onClick={() => onSelect(log)}
               >
+                <TableCell onClick={(event) => event.stopPropagation()}>
+                  <Checkbox
+                    checked={selectedIds.includes(log.id)}
+                    aria-label={`Select log ${log.id}`}
+                    onCheckedChange={(checked) =>
+                      onToggleSelect(log, checked === true)
+                    }
+                  />
+                </TableCell>
                 <TableCell className="font-mono text-xs">{log.id}</TableCell>
                 <TableCell>
                   <ProviderBadge provider={log.provider} />

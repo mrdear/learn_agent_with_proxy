@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { AppShell } from "@/components/app-shell";
+import { ComparePage } from "@/pages/compare-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { LogsPage } from "@/pages/logs-page";
 import { normalizeRoute, type RoutePath } from "@/lib/routes";
@@ -45,13 +46,17 @@ function App() {
     document.title =
       pathname === "/logs"
         ? "Logs · Learn Agent With Proxy"
-        : "Dashboard · Learn Agent With Proxy";
+        : pathname === "/compare"
+          ? "Compare · Learn Agent With Proxy"
+          : "Dashboard · Learn Agent With Proxy";
   }, [pathname]);
 
   return (
     <AppShell pathname={pathname} onNavigate={navigate}>
       {pathname === "/logs" ? (
-        <LogsPage />
+        <LogsPage onNavigate={navigate} />
+      ) : pathname === "/compare" ? (
+        <ComparePage onNavigate={navigate} />
       ) : (
         <DashboardPage onNavigate={navigate} />
       )}
