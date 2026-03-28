@@ -5,36 +5,15 @@ import {
   type LogRow,
 } from "../db/index.js";
 import {
-  buildTargetUrl,
   collectSseChunks,
-  extractTokens,
-  summarizeStream,
+  inspectRequestBody,
   type Provider,
 } from "./proxy.js";
 import { sanitizeHeaders } from "./http.js";
-import {
-  prepareRelayBody,
-  prepareRelayHeaders,
-  resolveRelayBaseUrl,
-} from "./upstream.js";
+import { getRelayStrategy } from "./strategies/index.js";
 
 function isBodyMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
-}
-
-function parseJsonRecord(value: string | null): Record<string, unknown> | null {
-  if (!value) return null;
-
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    // Keep raw non-JSON bodies as-is.
-  }
-
-  return null;
 }
 
 function parseHeaders(value: string | null): Headers {
@@ -119,15 +98,14 @@ export async function replayLogById(
   const requestBody = selectRequestBody(original, overrides);
   const provider = original.provider as Provider;
   const requestUrl = buildReplayRequestUrl(endpoint);
-  const targetUrl = buildTargetUrl(resolveRelayBaseUrl(provider), requestUrl);
   const requestHeaders = sanitizeHeaders(parseHeaders(original.request_headers));
-  const relayHeaders = prepareRelayHeaders(parseHeaders(original.request_headers));
+  const strategy = getRelayStrategy(provider);
   const startTime = Date.now();
   const requestTime = new Date(startTime).toISOString();
-  const bodyJson = parseJsonRecord(requestBody);
-  const relayBody = prepareRelayBody(requestBody);
-  const isStreaming = bodyJson ? bodyJson.stream === true : original.is_streaming === 1;
-  const model = relayBody.model ?? original.model;
+  const bodyInspection = inspectRequestBody(requestBody);
+  const relayRequest = strategy.prepareRelayRequest(bodyInspection, parseHeaders(original.request_headers));
+  const isStreaming = bodyInspection.json ? bodyInspection.json.stream === true : original.is_streaming === 1;
+  const model = relayRequest.model ?? original.model;
 
   const logIdInserted = createLog({
     provider,
@@ -142,16 +120,17 @@ export async function replayLogById(
   });
 
   try {
-    const response = await fetch(targetUrl, {
+    const response = await strategy.sendRelayRequest({
+      path: `${requestUrl.pathname}${requestUrl.search}`,
       method,
-      headers: relayHeaders,
-      body: isBodyMethod(method) && relayBody.body !== null ? relayBody.body : undefined,
+      headers: relayRequest.headers,
+      body: isBodyMethod(method) && relayRequest.body !== null ? relayRequest.body : undefined,
       signal,
     });
 
     if (isStreaming && response.body) {
       const chunks = await collectSseChunks(response.body);
-      const summary = summarizeStream(provider, chunks);
+      const summary = strategy.summarizeStream(chunks);
 
       completeLog({
         id: logIdInserted,
@@ -170,7 +149,7 @@ export async function replayLogById(
 
       try {
         const responseJson = JSON.parse(responseText) as Record<string, unknown>;
-        tokens = extractTokens(provider, responseJson);
+        tokens = strategy.extractTokens(responseJson);
       } catch {
         // Non-JSON bodies are stored raw.
       }

@@ -1,21 +1,12 @@
 import { Hono } from "hono";
 import { completeLog, createLog } from "../db/index.js";
 import {
-  buildTargetUrl,
   collectSseChunks,
   detectProvider,
-  extractModel,
-  extractTokens,
-  isStreamingRequest,
-  summarizeStream,
-  type Provider,
+  inspectRequestBody,
 } from "../lib/proxy.js";
 import { cloneResponseHeaders, sanitizeHeaders } from "../lib/http.js";
-import {
-  prepareRelayBody,
-  prepareRelayHeaders,
-  resolveRelayBaseUrl,
-} from "../lib/upstream.js";
+import { getRelayStrategy, type RelayStrategy } from "../lib/strategies/index.js";
 
 function isBodyMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
@@ -52,7 +43,7 @@ function safeCompleteLog(data: Parameters<typeof completeLog>[0]): void {
 
 async function recordStreamingLog(params: {
   body: ReadableStream<Uint8Array>;
-  provider: Provider;
+  strategy: RelayStrategy;
   logId: number | null;
   startTime: number;
   responseStatus: number;
@@ -62,7 +53,7 @@ async function recordStreamingLog(params: {
   }
 
   const chunks = await collectSseChunks(params.body);
-  const summary = summarizeStream(params.provider, chunks);
+  const summary = params.strategy.summarizeStream(chunks);
 
   safeCompleteLog({
     id: params.logId,
@@ -88,30 +79,18 @@ proxy.all("/v1/*", async (c) => {
   const method = c.req.method;
   const rawHeaders = c.req.raw.headers;
   const provider = detectProvider(rawHeaders, requestUrl.pathname);
-  const baseUrl = resolveRelayBaseUrl(provider);
-  const targetUrl = buildTargetUrl(baseUrl, requestUrl);
+  const strategy = getRelayStrategy(provider);
   const logHeaders = sanitizeHeaders(rawHeaders);
 
   let requestBody: string | null = null;
-  let model: string | null = null;
-  let streaming = false;
+  let bodyInspection = inspectRequestBody(null);
 
   if (isBodyMethod(method)) {
     requestBody = await c.req.text();
-
-    try {
-      const parsed = JSON.parse(requestBody) as Record<string, unknown>;
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        model = extractModel(parsed);
-        streaming = isStreamingRequest(parsed);
-      }
-    } catch {
-      // Body is not JSON, which is fine for generic proxying.
-    }
+    bodyInspection = inspectRequestBody(requestBody);
   }
 
-  const relayBody = prepareRelayBody(requestBody);
-  const forwardHeaders = prepareRelayHeaders(rawHeaders);
+  const relayRequest = strategy.prepareRelayRequest(bodyInspection, rawHeaders);
 
   const logId = safeCreateLog({
     provider,
@@ -119,25 +98,26 @@ proxy.all("/v1/*", async (c) => {
     method,
     request_headers: JSON.stringify(logHeaders),
     request_body: requestBody,
-    model: relayBody.model ?? model,
-    is_streaming: streaming ? 1 : 0,
+    model: relayRequest.model ?? bodyInspection.model,
+    is_streaming: bodyInspection.isStreaming ? 1 : 0,
     request_time: requestTime,
   });
 
   try {
-    const response = await fetch(targetUrl, {
+    const response = await strategy.sendRelayRequest({
+      path: requestPath,
       method,
-      headers: forwardHeaders,
-      body: isBodyMethod(method) && relayBody.body !== null ? relayBody.body : undefined,
+      headers: relayRequest.headers,
+      body: isBodyMethod(method) && relayRequest.body !== null ? relayRequest.body : undefined,
       signal: c.req.raw.signal,
     });
 
-    if (streaming && response.body) {
+    if (bodyInspection.isStreaming && response.body) {
       const [clientBody, logBody] = response.body.tee();
 
       void recordStreamingLog({
         body: logBody,
-        provider,
+        strategy,
         logId,
         startTime,
         responseStatus: response.status,
@@ -154,7 +134,7 @@ proxy.all("/v1/*", async (c) => {
 
     try {
       const responseJson = JSON.parse(responseText) as Record<string, unknown>;
-      tokens = extractTokens(provider, responseJson);
+      tokens = strategy.extractTokens(responseJson);
     } catch {
       // Non-JSON responses are forwarded as-is.
     }

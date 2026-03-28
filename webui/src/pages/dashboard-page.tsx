@@ -48,12 +48,12 @@ const CURL_SNIPPET = `curl http://localhost:3000/v1/chat/completions \
 const BACKEND_ENV_SNIPPET = `PORT=3000
 DATABASE_URL=./proxy.db
 
-OPENROUTER_API_KEY=or-your-key
-OPENROUTER_BASE_URL=https://openrouter.ai/api
-OPENROUTER_DEFAULT_MODEL=openrouter/free
+OPENAI_API_KEY=sk-your-key
+OPENAI_BASE_URL=https://openrouter.ai/api
+OPENAI_DEFAULT_MODEL=gpt-4.1-mini
 # Optional:
-# OPENROUTER_HTTP_REFERER=http://localhost:3000
-# OPENROUTER_TITLE=Learn Agent With Proxy`;
+# OPENAI_HTTP_REFERER=http://localhost:3000
+# OPENAI_TITLE=Learn Agent With Proxy`;
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);

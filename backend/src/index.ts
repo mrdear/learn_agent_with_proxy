@@ -62,7 +62,7 @@ serve(
   (info) => {
     console.log(`Proxy server running on http://localhost:${info.port}`);
     console.log(`Web UI: http://localhost:${info.port}/`);
-    console.log(`Relay: OpenRouter when OPENROUTER_API_KEY is set, otherwise legacy provider passthrough`);
+    console.log(`Relay modes: OpenAI mode (OpenRouter when configured) and Anthropic mode`);
     console.log(`OpenAI route: http://localhost:${info.port}/v1/chat/completions`);
     console.log(`Anthropic route: http://localhost:${info.port}/v1/messages`);
   }

@@ -1,6 +1,6 @@
 export type Provider = "openai" | "anthropic";
 
-type Tokens = {
+export type Tokens = {
   input: number | null;
   output: number | null;
 };
@@ -10,8 +10,45 @@ export type StreamSummary = {
   tokens: Tokens;
 };
 
+export type RequestBodyInspection = {
+  raw: string | null;
+  json: Record<string, unknown> | null;
+  model: string | null;
+  isStreaming: boolean;
+};
+
 function readNumber(value: unknown): number | null {
   return typeof value === "number" ? value : null;
+}
+
+export function parseJsonRecord(value: string | null): Record<string, unknown> | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Keep raw non-JSON bodies as-is.
+  }
+
+  return null;
+}
+
+export function inspectRequestBody(requestBody: string | null): RequestBodyInspection {
+  const json = parseJsonRecord(requestBody);
+  const model = json ? extractModel(json) : null;
+  const isStreaming = json ? isStreamingRequest(json) : false;
+
+  return {
+    raw: requestBody,
+    json,
+    model,
+    isStreaming,
+  };
 }
 
 function readSseBlocks(buffer: string, chunks: unknown[]): string {
