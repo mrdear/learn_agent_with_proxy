@@ -7,19 +7,16 @@ import {
 import {
   buildTargetUrl,
   collectSseChunks,
-  extractModel,
   extractTokens,
-  sanitizeHeaders,
   summarizeStream,
   type Provider,
 } from "./proxy.js";
-
-const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://api.openai.com";
-const ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
-
-function getBaseUrl(provider: Provider): string {
-  return provider === "openai" ? OPENAI_BASE_URL : ANTHROPIC_BASE_URL;
-}
+import { sanitizeHeaders } from "./http.js";
+import {
+  prepareRelayBody,
+  prepareRelayHeaders,
+  resolveRelayBaseUrl,
+} from "./upstream.js";
 
 function isBodyMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
@@ -122,13 +119,15 @@ export async function replayLogById(
   const requestBody = selectRequestBody(original, overrides);
   const provider = original.provider as Provider;
   const requestUrl = buildReplayRequestUrl(endpoint);
-  const targetUrl = buildTargetUrl(getBaseUrl(provider), requestUrl);
+  const targetUrl = buildTargetUrl(resolveRelayBaseUrl(provider), requestUrl);
   const requestHeaders = sanitizeHeaders(parseHeaders(original.request_headers));
+  const relayHeaders = prepareRelayHeaders(parseHeaders(original.request_headers));
   const startTime = Date.now();
   const requestTime = new Date(startTime).toISOString();
   const bodyJson = parseJsonRecord(requestBody);
+  const relayBody = prepareRelayBody(requestBody);
   const isStreaming = bodyJson ? bodyJson.stream === true : original.is_streaming === 1;
-  const model = bodyJson ? extractModel(bodyJson) ?? original.model : original.model;
+  const model = relayBody.model ?? original.model;
 
   const logIdInserted = createLog({
     provider,
@@ -145,8 +144,8 @@ export async function replayLogById(
   try {
     const response = await fetch(targetUrl, {
       method,
-      headers: requestHeaders,
-      body: isBodyMethod(method) && requestBody !== null ? requestBody : undefined,
+      headers: relayHeaders,
+      body: isBodyMethod(method) && relayBody.body !== null ? relayBody.body : undefined,
       signal,
     });
 

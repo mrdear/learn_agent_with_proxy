@@ -23,7 +23,7 @@ app.use("/api/*", cors());
 // API routes
 app.route("/api", api);
 
-// Proxy routes (OpenAI / Anthropic)
+// Proxy relay routes (OpenAI / Anthropic inputs, OpenRouter upstream when enabled)
 app.route("/", proxy);
 
 // Static file serving - serve webui build output
@@ -62,7 +62,8 @@ serve(
   (info) => {
     console.log(`Proxy server running on http://localhost:${info.port}`);
     console.log(`Web UI: http://localhost:${info.port}/`);
-    console.log(`OpenAI proxy: http://localhost:${info.port}/v1/chat/completions`);
-    console.log(`Anthropic proxy: http://localhost:${info.port}/v1/messages`);
+    console.log(`Relay: OpenRouter when OPENROUTER_API_KEY is set, otherwise legacy provider passthrough`);
+    console.log(`OpenAI route: http://localhost:${info.port}/v1/chat/completions`);
+    console.log(`Anthropic route: http://localhost:${info.port}/v1/messages`);
   }
 );

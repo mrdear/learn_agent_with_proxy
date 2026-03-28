@@ -10,32 +10,6 @@ export type StreamSummary = {
   tokens: Tokens;
 };
 
-const BLOCKED_HEADERS = new Set([
-  "host",
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-  "content-length",
-]);
-
-function cloneHeaders(headers: Headers): Record<string, string> {
-  const result: Record<string, string> = {};
-
-  headers.forEach((value, key) => {
-    if (BLOCKED_HEADERS.has(key.toLowerCase())) {
-      return;
-    }
-    result[key] = value;
-  });
-
-  return result;
-}
-
 function readNumber(value: unknown): number | null {
   return typeof value === "number" ? value : null;
 }
@@ -141,14 +115,6 @@ export function buildTargetUrl(baseUrl: string, requestUrl: URL): string {
   return new URL(relativePath, normalizedBaseUrl).toString();
 }
 
-export function sanitizeHeaders(headers: Headers): Record<string, string> {
-  return cloneHeaders(headers);
-}
-
-export function cloneResponseHeaders(headers: Headers): Record<string, string> {
-  return cloneHeaders(headers);
-}
-
 export function extractModel(body: Record<string, unknown>): string | null {
   return typeof body.model === "string" ? body.model : null;
 }
@@ -241,3 +207,4 @@ export async function collectSseChunks(body: ReadableStream<Uint8Array>): Promis
 
   return chunks;
 }
+export { cloneResponseHeaders, sanitizeHeaders } from "./http.js";

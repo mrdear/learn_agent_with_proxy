@@ -25,19 +25,19 @@ const OPENAI_SNIPPET = `import OpenAI from "openai";
 
 const client = new OpenAI({
   baseURL: "http://localhost:3000",
-  apiKey: process.env.OPENAI_API_KEY!,
+  apiKey: "sk-local-proxy",
 });`;
 
 const ANTHROPIC_SNIPPET = `import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
   baseURL: "http://localhost:3000",
-  apiKey: process.env.ANTHROPIC_API_KEY!,
+  apiKey: "sk-local-proxy",
 });`;
 
 const CURL_SNIPPET = `curl http://localhost:3000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-your-openai-key" \
+  -H "Authorization: Bearer sk-local-proxy" \
   -d '{
     "model": "gpt-4.1-mini",
     "messages": [
@@ -48,8 +48,12 @@ const CURL_SNIPPET = `curl http://localhost:3000/v1/chat/completions \
 const BACKEND_ENV_SNIPPET = `PORT=3000
 DATABASE_URL=./proxy.db
 
-OPENAI_BASE_URL=https://api.openai.com
-ANTHROPIC_BASE_URL=https://api.anthropic.com`;
+OPENROUTER_API_KEY=or-your-key
+OPENROUTER_BASE_URL=https://openrouter.ai/api
+OPENROUTER_DEFAULT_MODEL=openrouter/free
+# Optional:
+# OPENROUTER_HTTP_REFERER=http://localhost:3000
+# OPENROUTER_TITLE=Learn Agent With Proxy`;
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -198,7 +202,7 @@ function ProviderTabs() {
       <TabsContent value="openai" className="mt-4">
         <SnippetCard
           title="OpenAI SDK"
-          description="Use the local proxy as the base URL, while keeping your existing OpenAI key."
+          description="Use the local proxy as the base URL, and let the backend handle upstream auth."
           code={OPENAI_SNIPPET}
         />
       </TabsContent>
@@ -206,7 +210,7 @@ function ProviderTabs() {
       <TabsContent value="anthropic" className="mt-4">
         <SnippetCard
           title="Anthropic SDK"
-          description="The proxy forwards Anthropic requests and preserves the x-api-key header."
+          description="The proxy forwards Anthropic requests through OpenRouter and rewrites the upstream key."
           code={ANTHROPIC_SNIPPET}
         />
       </TabsContent>
@@ -244,8 +248,8 @@ export function DashboardPage({
                 把你的 AI 客户端指向本地代理
               </CardTitle>
               <CardDescription className="max-w-2xl text-sm">
-                只要把 base URL 切到这个本地服务，后端就会帮你转发到 OpenAI
-                或 Anthropic，并把请求与响应写入日志。
+                只要把 base URL 切到这个本地服务，后端就会帮你转发到
+                OpenRouter，并把请求与响应写入日志。
               </CardDescription>
             </div>
           </CardHeader>
@@ -275,6 +279,7 @@ export function DashboardPage({
             <FactRow label="Proxy URL" value={PROXY_URL} copyable tone="default" />
             <FactRow label="OpenAI route" value="/v1/chat/completions" tone="secondary" />
             <FactRow label="Anthropic route" value="/v1/messages" tone="secondary" />
+            <FactRow label="Relay upstream" value="OpenRouter" tone="secondary" />
             <FactRow label="Logs route" value="/logs" tone="outline" />
           </CardContent>
         </Card>
@@ -292,7 +297,7 @@ export function DashboardPage({
         <StepCard
           step="02"
           title="Swap the base URL"
-          description="Point your SDK or HTTP client to the local proxy, but keep your provider API key as-is."
+          description="Point your SDK or HTTP client to the local proxy, and use any placeholder apiKey you like."
           tone="secondary"
         />
         <StepCard
@@ -318,7 +323,7 @@ export function DashboardPage({
       <section className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
         <SnippetCard
           title="Backend .env"
-          description="These values control where the proxy forwards traffic."
+          description="These values control the OpenRouter relay used by the proxy."
           code={BACKEND_ENV_SNIPPET}
         />
 

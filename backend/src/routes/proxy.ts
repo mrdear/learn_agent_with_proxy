@@ -2,23 +2,20 @@ import { Hono } from "hono";
 import { completeLog, createLog } from "../db/index.js";
 import {
   buildTargetUrl,
-  cloneResponseHeaders,
   collectSseChunks,
   detectProvider,
   extractModel,
   extractTokens,
   isStreamingRequest,
-  sanitizeHeaders,
   summarizeStream,
   type Provider,
 } from "../lib/proxy.js";
-
-const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://api.openai.com";
-const ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
-
-function getBaseUrl(provider: Provider): string {
-  return provider === "openai" ? OPENAI_BASE_URL : ANTHROPIC_BASE_URL;
-}
+import { cloneResponseHeaders, sanitizeHeaders } from "../lib/http.js";
+import {
+  prepareRelayBody,
+  prepareRelayHeaders,
+  resolveRelayBaseUrl,
+} from "../lib/upstream.js";
 
 function isBodyMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
@@ -91,9 +88,9 @@ proxy.all("/v1/*", async (c) => {
   const method = c.req.method;
   const rawHeaders = c.req.raw.headers;
   const provider = detectProvider(rawHeaders, requestUrl.pathname);
-  const baseUrl = getBaseUrl(provider);
+  const baseUrl = resolveRelayBaseUrl(provider);
   const targetUrl = buildTargetUrl(baseUrl, requestUrl);
-  const forwardHeaders = sanitizeHeaders(rawHeaders);
+  const logHeaders = sanitizeHeaders(rawHeaders);
 
   let requestBody: string | null = null;
   let model: string | null = null;
@@ -113,13 +110,16 @@ proxy.all("/v1/*", async (c) => {
     }
   }
 
+  const relayBody = prepareRelayBody(requestBody);
+  const forwardHeaders = prepareRelayHeaders(rawHeaders);
+
   const logId = safeCreateLog({
     provider,
     endpoint: requestPath,
     method,
-    request_headers: JSON.stringify(forwardHeaders),
+    request_headers: JSON.stringify(logHeaders),
     request_body: requestBody,
-    model,
+    model: relayBody.model ?? model,
     is_streaming: streaming ? 1 : 0,
     request_time: requestTime,
   });
@@ -128,7 +128,7 @@ proxy.all("/v1/*", async (c) => {
     const response = await fetch(targetUrl, {
       method,
       headers: forwardHeaders,
-      body: isBodyMethod(method) && requestBody !== null ? requestBody : undefined,
+      body: isBodyMethod(method) && relayBody.body !== null ? relayBody.body : undefined,
       signal: c.req.raw.signal,
     });
 
