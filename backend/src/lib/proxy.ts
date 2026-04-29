@@ -1,4 +1,4 @@
-export type Provider = "openai" | "anthropic";
+export type Provider = "openai" | "anthropic" | "openai-responses";
 
 export type Tokens = {
   input: number | null;
@@ -139,6 +139,10 @@ export function detectProvider(headers: Headers, path: string): Provider {
     return "anthropic";
   }
 
+  if (path.includes("/responses")) {
+    return "openai-responses";
+  }
+
   return "openai";
 }
 
@@ -161,10 +165,49 @@ export function isStreamingRequest(body: Record<string, unknown> | null): boolea
 }
 
 export function extractTokens(provider: Provider, data: Record<string, unknown>): Tokens {
-  return provider === "anthropic" ? extractAnthropicTokens(data) : extractOpenAITokens(data);
+  if (provider === "anthropic") return extractAnthropicTokens(data);
+  if (provider === "openai-responses") return extractOpenAIResponsesTokens(data);
+  return extractOpenAITokens(data);
+}
+
+function extractOpenAIResponsesTokens(data: Record<string, unknown>): Tokens {
+  const usage = data.usage as Record<string, unknown> | undefined;
+  if (!usage) {
+    return { input: null, output: null };
+  }
+  return {
+    input: readNumber(usage.input_tokens),
+    output: readNumber(usage.output_tokens),
+  };
+}
+
+function summarizeResponsesStream(chunks: unknown[]): StreamSummary {
+  let text = "";
+  let tokens: Tokens = { input: null, output: null };
+
+  for (const chunk of chunks) {
+    const item = chunk as Record<string, unknown>;
+
+    if (item.type === "response.output_text.delta" && typeof item.delta === "string") {
+      text += item.delta;
+    }
+
+    if (item.type === "response.completed") {
+      const response = item.response as Record<string, unknown> | undefined;
+      if (response) {
+        tokens = extractOpenAIResponsesTokens(response);
+      }
+    }
+  }
+
+  return { text, tokens };
 }
 
 export function summarizeStream(provider: Provider, chunks: unknown[]): StreamSummary {
+  if (provider === "openai-responses") {
+    return summarizeResponsesStream(chunks);
+  }
+
   let text = "";
   let tokens: Tokens = { input: null, output: null };
 

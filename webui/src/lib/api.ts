@@ -63,6 +63,14 @@ export async function fetchModels(): Promise<string[]> {
   return res.json();
 }
 
+export async function clearAllLogs(): Promise<{ deleted: number }> {
+  const res = await fetch(`${BASE}/logs`, { method: "DELETE" });
+  if (!res.ok) {
+    throw new Error("Failed to clear logs");
+  }
+  return res.json();
+}
+
 export async function replayLog(
   id: number,
   overrides?: ReplayLogOverrides

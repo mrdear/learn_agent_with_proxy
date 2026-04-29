@@ -9,6 +9,8 @@ import { replayLog } from "@/lib/api";
 import { toast } from "sonner";
 import { LogRelayPanel } from "@/components/log-relay-panel";
 import { MagnifyingGlass } from "@phosphor-icons/react";
+import { JsonViewer } from "@/components/ui/json-viewer";
+import { MarkdownViewer } from "@/components/ui/markdown-viewer";
 
 interface LogDetailProps {
   log: LogEntry;
@@ -114,18 +116,24 @@ function getToolSchema(tool: ToolDef): unknown {
 
 function JsonBlock({ label, data }: { label: string; data: string | null }) {
   if (!data) return null;
-  let formatted: string;
+
+  let parsed: unknown = null;
   try {
-    formatted = JSON.stringify(JSON.parse(data), null, 2);
+    parsed = JSON.parse(data);
   } catch {
-    formatted = data;
+    // not valid JSON
   }
+
   return (
     <div className="space-y-1.5">
       <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <pre className="bg-muted rounded-md p-3 text-xs overflow-x-auto max-h-[500px] overflow-y-auto whitespace-pre-wrap break-all">
-        {formatted}
-      </pre>
+      {parsed !== null && typeof parsed === "object" ? (
+        <JsonViewer data={parsed} />
+      ) : (
+        <pre className="bg-muted rounded-md p-3 text-xs overflow-x-auto max-h-[500px] overflow-y-auto whitespace-pre-wrap break-all">
+          {data}
+        </pre>
+      )}
     </div>
   );
 }
@@ -164,16 +172,14 @@ function MessageItem({ msg, index }: { msg: { role: string; content: unknown; to
         )}
       </div>
       {contentText && (
-        <pre className="p-3 text-xs overflow-x-auto max-h-[400px] overflow-y-auto whitespace-pre-wrap break-all">
-          {contentText}
-        </pre>
+        <div className="p-3 overflow-x-auto max-h-[400px] overflow-y-auto">
+          <MarkdownViewer content={contentText} />
+        </div>
       )}
       {!!hasToolCalls && (
         <div className="border-t border-border p-3">
           <p className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wider font-semibold">Tool Calls</p>
-          <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto max-h-[300px] overflow-y-auto whitespace-pre-wrap break-all">
-            {JSON.stringify(msg.tool_calls, null, 2)}
-          </pre>
+          <JsonViewer data={msg.tool_calls as object} />
         </div>
       )}
     </div>
@@ -202,10 +208,10 @@ function ToolCard({ tool, highlight }: { tool: ToolDef; highlight: string }) {
           </p>
         </div>
       )}
-      {schema != null && (
-        <pre className="p-3 text-xs overflow-x-auto max-h-[300px] overflow-y-auto whitespace-pre-wrap break-all">
-          {JSON.stringify(schema, null, 2)}
-        </pre>
+      {schema != null && typeof schema === "object" && (
+        <div className="p-3">
+          <JsonViewer data={schema} />
+        </div>
       )}
     </div>
   );
@@ -423,9 +429,9 @@ export function LogDetail({
 
         <TabsContent value="system" className="mt-4">
           {systemPrompt ? (
-            <pre className="max-h-[700px] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted p-4 text-xs leading-relaxed">
-              {systemPrompt}
-            </pre>
+            <div className="max-h-[700px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4">
+              <MarkdownViewer content={systemPrompt} />
+            </div>
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No system prompt found
@@ -441,9 +447,7 @@ export function LogDetail({
 
         <TabsContent value="params" className="mt-4">
           {params ? (
-            <pre className="max-h-[600px] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted p-4 text-xs">
-              {JSON.stringify(params, null, 2)}
-            </pre>
+            <JsonViewer data={params} />
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No parameters
@@ -453,9 +457,16 @@ export function LogDetail({
 
         <TabsContent value="response" className="mt-4">
           {log.response_body_finish ? (
-            <pre className="max-h-[700px] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted p-4 text-xs leading-relaxed">
-              {log.response_body_finish}
-            </pre>
+            (() => {
+              try {
+                const parsed = JSON.parse(log.response_body_finish);
+                return typeof parsed === "object" && parsed !== null
+                  ? <JsonViewer data={parsed} />
+                  : <div className="max-h-[700px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4"><MarkdownViewer content={log.response_body_finish} /></div>;
+              } catch {
+                return <div className="max-h-[700px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4"><MarkdownViewer content={log.response_body_finish} /></div>;
+              }
+            })()
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No response body

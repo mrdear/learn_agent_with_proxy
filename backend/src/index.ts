@@ -11,6 +11,10 @@ import fs from "fs";
 // Initialize database (side effect: creates table)
 import "./db/index.js";
 
+// Register event listeners
+import { registerDbLogger } from "./events/listeners/db-logger.js";
+registerDbLogger();
+
 import proxy from "./routes/proxy.js";
 import api from "./routes/api.js";
 

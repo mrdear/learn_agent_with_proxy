@@ -1,9 +1,5 @@
-import {
-  completeLog,
-  createLog,
-  getLogById,
-  type LogRow,
-} from "../db/index.js";
+import crypto from "node:crypto";
+import { getLogById, type LogRow } from "../db/index.js";
 import {
   collectSseChunks,
   inspectRequestBody,
@@ -11,6 +7,8 @@ import {
 } from "./proxy.js";
 import { sanitizeHeaders } from "./http.js";
 import { getRelayStrategy } from "./strategies/index.js";
+import { proxyEventBus } from "../events/index.js";
+import { getLogIdForRequest } from "../events/listeners/db-logger.js";
 
 function isBodyMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
@@ -107,17 +105,23 @@ export async function replayLogById(
   const isStreaming = bodyInspection.json ? bodyInspection.json.stream === true : original.is_streaming === 1;
   const model = relayRequest.model ?? original.model;
 
-  const logIdInserted = createLog({
+  const requestId = crypto.randomUUID();
+
+  proxyEventBus.emit("proxy:request", {
+    requestId,
     provider,
     endpoint,
     method,
-    request_headers: JSON.stringify(requestHeaders),
-    request_body: requestBody,
+    headers: requestHeaders,
+    body: requestBody,
     model,
-    is_streaming: isStreaming ? 1 : 0,
-    source_log_id: original.id,
-    request_time: requestTime,
+    isStreaming,
+    sourceLogId: original.id,
+    requestTime,
   });
+
+  // emit 是同步的，此时 logId 已写入 map；必须在 proxy:response 删除之前捕获
+  const replayedLogId = getLogIdForRequest(requestId);
 
   try {
     const response = await strategy.sendRelayRequest({
@@ -132,16 +136,15 @@ export async function replayLogById(
       const chunks = await collectSseChunks(response.body);
       const summary = strategy.summarizeStream(chunks);
 
-      completeLog({
-        id: logIdInserted,
-        response_status: response.status,
-        response_body: JSON.stringify(chunks),
-        response_body_finish: summary.text,
-        input_tokens: summary.tokens.input,
-        output_tokens: summary.tokens.output,
-        response_time: new Date().toISOString(),
-        duration_ms: Date.now() - startTime,
-        error: null,
+      proxyEventBus.emit("proxy:response", {
+        requestId,
+        status: response.status,
+        body: JSON.stringify(chunks),
+        bodyFinish: summary.text,
+        inputTokens: summary.tokens.input,
+        outputTokens: summary.tokens.output,
+        responseTime: new Date().toISOString(),
+        durationMs: Date.now() - startTime,
       });
     } else {
       const responseText = await response.text();
@@ -154,35 +157,34 @@ export async function replayLogById(
         // Non-JSON bodies are stored raw.
       }
 
-      completeLog({
-        id: logIdInserted,
-        response_status: response.status,
-        response_body: null,
-        response_body_finish: responseText,
-        input_tokens: tokens.input,
-        output_tokens: tokens.output,
-        response_time: new Date().toISOString(),
-        duration_ms: Date.now() - startTime,
-        error: null,
+      proxyEventBus.emit("proxy:response", {
+        requestId,
+        status: response.status,
+        body: null,
+        bodyFinish: responseText,
+        inputTokens: tokens.input,
+        outputTokens: tokens.output,
+        responseTime: new Date().toISOString(),
+        durationMs: Date.now() - startTime,
       });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    completeLog({
-      id: logIdInserted,
-      response_status: 502,
-      response_body: null,
-      response_body_finish: null,
-      input_tokens: null,
-      output_tokens: null,
-      response_time: new Date().toISOString(),
-      duration_ms: Date.now() - startTime,
+    proxyEventBus.emit("proxy:error", {
+      requestId,
+      status: 502,
       error: message,
+      responseTime: new Date().toISOString(),
+      durationMs: Date.now() - startTime,
     });
   }
 
-  const replayed = getLogById(logIdInserted);
+  if (replayedLogId === undefined) {
+    throw new ReplayError("Replay log not found", 500);
+  }
+
+  const replayed = getLogById(replayedLogId);
   if (!replayed) {
     throw new ReplayError("Replay log not found", 500);
   }

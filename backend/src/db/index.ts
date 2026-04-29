@@ -28,6 +28,9 @@ db.exec(`
     -- Token 统计
     input_tokens INTEGER,
     output_tokens INTEGER,
+    cache_read_tokens INTEGER,
+    cache_creation_tokens INTEGER,
+    thinking_tokens INTEGER,
     
     -- 时间信息
     request_time TEXT NOT NULL,
@@ -52,6 +55,9 @@ function ensureColumn(column: string, ddl: string): void {
 }
 
 ensureColumn("source_log_id", "ALTER TABLE logs ADD COLUMN source_log_id INTEGER");
+ensureColumn("cache_read_tokens", "ALTER TABLE logs ADD COLUMN cache_read_tokens INTEGER");
+ensureColumn("cache_creation_tokens", "ALTER TABLE logs ADD COLUMN cache_creation_tokens INTEGER");
+ensureColumn("thinking_tokens", "ALTER TABLE logs ADD COLUMN thinking_tokens INTEGER");
 
 export interface LogRow {
   id: number;
@@ -65,6 +71,9 @@ export interface LogRow {
   response_body_finish: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_creation_tokens: number | null;
+  thinking_tokens: number | null;
   request_time: string;
   response_time: string | null;
   duration_ms: number | null;
@@ -87,6 +96,9 @@ const updateLogResponse = db.prepare(`
     response_body_finish = @response_body_finish,
     input_tokens = @input_tokens,
     output_tokens = @output_tokens,
+    cache_read_tokens = @cache_read_tokens,
+    cache_creation_tokens = @cache_creation_tokens,
+    thinking_tokens = @thinking_tokens,
     response_time = @response_time,
     duration_ms = @duration_ms,
     error = @error
@@ -118,11 +130,19 @@ export function completeLog(data: {
   response_body_finish: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  cache_read_tokens?: number | null;
+  cache_creation_tokens?: number | null;
+  thinking_tokens?: number | null;
   response_time: string;
   duration_ms: number;
   error: string | null;
 }): void {
-  updateLogResponse.run(data);
+  updateLogResponse.run({
+    ...data,
+    cache_read_tokens: data.cache_read_tokens ?? null,
+    cache_creation_tokens: data.cache_creation_tokens ?? null,
+    thinking_tokens: data.thinking_tokens ?? null,
+  });
 }
 
 export function getLogs(params: {
@@ -164,6 +184,11 @@ export function getLogs(params: {
 
 export function getLogById(id: number): LogRow | undefined {
   return db.prepare("SELECT * FROM logs WHERE id = @id").get({ id }) as LogRow | undefined;
+}
+
+export function clearLogs(): number {
+  const result = db.prepare("DELETE FROM logs").run();
+  return result.changes;
 }
 
 export function getModels(): string[] {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { type LogEntry, fetchLogs, fetchModels, type LogListResponse } from "@/lib/api";
+import { type LogEntry, fetchLogs, fetchModels, clearAllLogs, type LogListResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,6 +13,7 @@ import { LogTable } from "@/components/log-table";
 import { LogDetail } from "@/components/log-detail";
 import { LogFilters } from "@/components/log-filters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { toast } from "sonner";
 import { saveCompareSelection } from "@/lib/compare-selection";
 import type { RoutePath } from "@/lib/routes";
 
@@ -30,6 +31,7 @@ export function LogsPage({
   const [search, setSearch] = useState<string>("");
   const [models, setModels] = useState<string[]>([]);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
+  const [viewedId, setViewedId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -115,6 +117,26 @@ export function LogsPage({
             <Badge variant="default" className="w-fit shadow-sm">
               {total} records
             </Badge>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={async () => {
+                if (!confirm("确认清除所有日志？此操作不可恢复。")) return;
+                try {
+                  const { deleted } = await clearAllLogs();
+                  toast.success(`已清除 ${deleted} 条日志`);
+                  setSelectedIds([]);
+                  setViewedId(null);
+                  setSelectedLog(null);
+                  void loadLogs();
+                } catch {
+                  toast.error("清除失败");
+                }
+              }}
+            >
+              Clear all
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4 pt-4">
@@ -174,7 +196,11 @@ export function LogsPage({
             selectedIds={selectedIds}
             onPageChange={setPage}
             onToggleSelect={handleToggleSelect}
-            onSelect={setSelectedLog}
+            viewedId={viewedId}
+            onSelect={(log) => {
+              setSelectedLog(log);
+              setViewedId(log.id);
+            }}
           />
         </CardContent>
       </Card>

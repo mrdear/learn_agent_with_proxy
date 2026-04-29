@@ -1,5 +1,5 @@
+import crypto from "node:crypto";
 import { Hono } from "hono";
-import { completeLog, createLog } from "../db/index.js";
 import {
   collectSseChunks,
   detectProvider,
@@ -7,6 +7,7 @@ import {
 } from "../lib/proxy.js";
 import { cloneResponseHeaders, sanitizeHeaders } from "../lib/http.js";
 import { getRelayStrategy, type RelayStrategy } from "../lib/strategies/index.js";
+import { proxyEventBus } from "../events/index.js";
 
 function isBodyMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
@@ -22,56 +23,32 @@ function createResponseHeaders(response: Response, defaultContentType?: string):
   return headers;
 }
 
-function safeCreateLog(
-  data: Parameters<typeof createLog>[0]
-): number | null {
-  try {
-    return createLog(data);
-  } catch (error) {
-    console.error("Failed to create proxy log:", error);
-    return null;
-  }
-}
-
-function safeCompleteLog(data: Parameters<typeof completeLog>[0]): void {
-  try {
-    completeLog(data);
-  } catch (error) {
-    console.error("Failed to complete proxy log:", error);
-  }
-}
-
-async function recordStreamingLog(params: {
+async function recordStreamingResponse(params: {
   body: ReadableStream<Uint8Array>;
   strategy: RelayStrategy;
-  logId: number | null;
+  requestId: string;
   startTime: number;
   responseStatus: number;
 }): Promise<void> {
-  if (params.logId === null) {
-    return;
-  }
-
   const chunks = await collectSseChunks(params.body);
   const summary = params.strategy.summarizeStream(chunks);
 
-  safeCompleteLog({
-    id: params.logId,
-    response_status: params.responseStatus,
-    response_body: JSON.stringify(chunks),
-    response_body_finish: summary.text,
-    input_tokens: summary.tokens.input,
-    output_tokens: summary.tokens.output,
-    response_time: new Date().toISOString(),
-    duration_ms: Date.now() - params.startTime,
-    error: null,
+  proxyEventBus.emit("proxy:response", {
+    requestId: params.requestId,
+    status: params.responseStatus,
+    body: JSON.stringify(chunks),
+    bodyFinish: summary.text,
+    inputTokens: summary.tokens.input,
+    outputTokens: summary.tokens.output,
+    responseTime: new Date().toISOString(),
+    durationMs: Date.now() - params.startTime,
   });
 }
 
 const proxy = new Hono();
 
-// Catch-all proxy route for /v1/*
 proxy.all("/v1/*", async (c) => {
+  const requestId = crypto.randomUUID();
   const startTime = Date.now();
   const requestTime = new Date().toISOString();
   const requestUrl = new URL(c.req.url);
@@ -92,15 +69,16 @@ proxy.all("/v1/*", async (c) => {
 
   const relayRequest = strategy.prepareRelayRequest(bodyInspection, rawHeaders);
 
-  const logId = safeCreateLog({
+  proxyEventBus.emit("proxy:request", {
+    requestId,
     provider,
     endpoint: requestPath,
     method,
-    request_headers: JSON.stringify(logHeaders),
-    request_body: requestBody,
+    headers: logHeaders,
+    body: requestBody,
     model: relayRequest.model ?? bodyInspection.model,
-    is_streaming: bodyInspection.isStreaming ? 1 : 0,
-    request_time: requestTime,
+    isStreaming: bodyInspection.isStreaming,
+    requestTime,
   });
 
   try {
@@ -115,10 +93,10 @@ proxy.all("/v1/*", async (c) => {
     if (bodyInspection.isStreaming && response.body) {
       const [clientBody, logBody] = response.body.tee();
 
-      void recordStreamingLog({
+      void recordStreamingResponse({
         body: logBody,
         strategy,
-        logId,
+        requestId,
         startTime,
         responseStatus: response.status,
       });
@@ -139,38 +117,29 @@ proxy.all("/v1/*", async (c) => {
       // Non-JSON responses are forwarded as-is.
     }
 
-    if (logId !== null) {
-      safeCompleteLog({
-        id: logId,
-        response_status: response.status,
-        response_body: null,
-        response_body_finish: responseText,
-        input_tokens: tokens.input,
-        output_tokens: tokens.output,
-        response_time: new Date().toISOString(),
-        duration_ms: Date.now() - startTime,
-        error: null,
-      });
-    }
+    proxyEventBus.emit("proxy:response", {
+      requestId,
+      status: response.status,
+      body: null,
+      bodyFinish: responseText,
+      inputTokens: tokens.input,
+      outputTokens: tokens.output,
+      responseTime: new Date().toISOString(),
+      durationMs: Date.now() - startTime,
+    });
 
     return new Response(responseText, {
       status: response.status,
       headers: createResponseHeaders(response, "application/json"),
     });
   } catch (error) {
-    if (logId !== null) {
-      safeCompleteLog({
-        id: logId,
-        response_status: 502,
-        response_body: null,
-        response_body_finish: null,
-        input_tokens: null,
-        output_tokens: null,
-        response_time: new Date().toISOString(),
-        duration_ms: Date.now() - startTime,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    proxyEventBus.emit("proxy:error", {
+      requestId,
+      status: 502,
+      error: error instanceof Error ? error.message : String(error),
+      responseTime: new Date().toISOString(),
+      durationMs: Date.now() - startTime,
+    });
 
     const message = error instanceof Error ? error.message : String(error);
     return c.json({ error: "Proxy error", message }, 502);

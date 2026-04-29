@@ -20,6 +20,7 @@ interface LogTableProps {
   page: number;
   totalPages: number;
   selectedIds: number[];
+  viewedId?: number | null;
   onPageChange: (page: number) => void;
   onToggleSelect: (log: LogEntry, checked: boolean) => void;
   onSelect: (log: LogEntry) => void;
@@ -61,12 +62,64 @@ function formatTokens(input: number | null, output: number | null): string {
   return `${input ?? "?"}/${output ?? "?"}`;
 }
 
+function hasToolCalls(log: LogEntry): boolean {
+  const text = log.response_body_finish;
+  if (!text) return false;
+  try {
+    const data = JSON.parse(text) as Record<string, unknown>;
+    // OpenAI format: choices[].message.tool_calls
+    const choices = data.choices as Array<Record<string, unknown>> | undefined;
+    if (choices?.some((c) => {
+      const msg = c.message as Record<string, unknown> | undefined;
+      return msg?.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
+    })) return true;
+    // Anthropic format: content[] with type "tool_use"
+    const content = data.content as Array<Record<string, unknown>> | undefined;
+    if (content?.some((b) => b.type === "tool_use")) return true;
+  } catch {
+    // not JSON
+  }
+  return false;
+}
+
+function extractFirstUserMessage(log: LogEntry): string | null {
+  if (!log.request_body) return null;
+  try {
+    const body = JSON.parse(log.request_body) as Record<string, unknown>;
+    const messages = body.messages as Array<{ role: string; content: unknown }> | undefined;
+    if (!messages) return null;
+    const userMsg = messages.find((m) => m.role === "user");
+    if (!userMsg) return null;
+    if (typeof userMsg.content === "string") return userMsg.content;
+    if (Array.isArray(userMsg.content)) {
+      const textPart = (userMsg.content as Array<Record<string, unknown>>).find(
+        (p) => p.type === "text" && typeof p.text === "string"
+      );
+      return (textPart?.text as string) ?? null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function hasToolsDefined(log: LogEntry): boolean {
+  if (!log.request_body) return false;
+  try {
+    const body = JSON.parse(log.request_body) as Record<string, unknown>;
+    return Array.isArray(body.tools) && body.tools.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function LogTable({
   logs,
   loading,
   page,
   totalPages,
   selectedIds,
+  viewedId,
   onPageChange,
   onToggleSelect,
   onSelect,
@@ -105,8 +158,10 @@ export function LogTable({
               <TableHead className="w-[100px]">Provider</TableHead>
               <TableHead className="w-[80px]">Status</TableHead>
               <TableHead>Model</TableHead>
+              <TableHead className="min-w-[200px]">User Message</TableHead>
               <TableHead>Endpoint</TableHead>
               <TableHead className="w-[80px]">Stream</TableHead>
+              <TableHead className="w-[90px]">Tools</TableHead>
               <TableHead className="w-[120px]">Tokens (I/O)</TableHead>
               <TableHead className="w-[80px]">Duration</TableHead>
               <TableHead className="w-[140px]">Time</TableHead>
@@ -118,7 +173,8 @@ export function LogTable({
                 key={log.id}
                 className={cn(
                   "cursor-pointer hover:bg-muted/50",
-                  selectedIds.includes(log.id) && "bg-primary/5"
+                  selectedIds.includes(log.id) && "bg-primary/5",
+                  viewedId === log.id && "ring-2 ring-inset ring-primary/40 bg-primary/10"
                 )}
                 onClick={() => onSelect(log)}
               >
@@ -150,12 +206,29 @@ export function LogTable({
                 <TableCell className="font-mono text-xs">
                   {log.model || "--"}
                 </TableCell>
+                <TableCell className="text-xs max-w-[300px]">
+                  {(() => {
+                    const msg = extractFirstUserMessage(log);
+                    if (!msg) return <span className="text-muted-foreground">--</span>;
+                    const truncated = msg.length > 80 ? msg.slice(0, 80) + "..." : msg;
+                    return <span className="line-clamp-2 break-all" title={msg.slice(0, 200)}>{truncated}</span>;
+                  })()}
+                </TableCell>
                 <TableCell className="font-mono text-xs max-w-[200px] truncate">
                   {log.endpoint}
                 </TableCell>
                 <TableCell>
                   {log.is_streaming ? (
                     <Badge variant="outline">SSE</Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">--</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {hasToolCalls(log) ? (
+                    <Badge variant="default" className="bg-purple-600 hover:bg-purple-700">Call</Badge>
+                  ) : hasToolsDefined(log) ? (
+                    <Badge variant="outline" className="text-purple-600 border-purple-300 dark:text-purple-400 dark:border-purple-700">Def</Badge>
                   ) : (
                     <span className="text-xs text-muted-foreground">--</span>
                   )}

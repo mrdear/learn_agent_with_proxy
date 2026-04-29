@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getLogs, getLogById, getModels } from "../db/index.js";
+import { getLogs, getLogById, getModels, clearLogs } from "../db/index.js";
 import { replayLogById, ReplayError, type ReplayOverrides } from "../lib/replay.js";
 
 const api = new Hono();
@@ -86,6 +86,12 @@ api.post("/logs/:id/replay", async (c) => {
     const message = error instanceof Error ? error.message : String(error);
     return c.json({ error: "Replay failed", message }, 500);
   }
+});
+
+// DELETE /api/logs - clear all logs
+api.delete("/logs", (c) => {
+  const deleted = clearLogs();
+  return c.json({ deleted });
 });
 
 // GET /api/models - get distinct model names

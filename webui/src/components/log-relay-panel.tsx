@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { JsonViewer } from "@/components/ui/json-viewer";
 
 interface LogRelayPanelProps {
   log: LogEntry;
@@ -29,6 +30,16 @@ export function LogRelayPanel({ log, onRelay, disabled = false }: LogRelayPanelP
   const [method, setMethod] = useState(log.method);
   const [body, setBody] = useState(originalBody);
   const [sending, setSending] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+
+  const bodyJson = useMemo(() => {
+    try {
+      const parsed = JSON.parse(body);
+      return typeof parsed === "object" && parsed !== null ? parsed : null;
+    } catch {
+      return null;
+    }
+  }, [body]);
 
   useEffect(() => {
     setEndpoint(log.endpoint);
@@ -82,18 +93,37 @@ export function LogRelayPanel({ log, onRelay, disabled = false }: LogRelayPanelP
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          Request Body
-        </p>
-        <textarea
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          spellCheck={false}
-          className={cn(
-            "min-h-[260px] w-full rounded-none border border-input bg-background px-3 py-2 font-mono text-xs leading-6 outline-none",
-            "focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
-          )}
-        />
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+            Request Body
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[10px] px-2"
+            onClick={() => setEditMode((v) => !v)}
+          >
+            {editMode ? "Preview" : "Edit"}
+          </Button>
+        </div>
+        {editMode ? (
+          <textarea
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            spellCheck={false}
+            className={cn(
+              "min-h-[260px] w-full rounded-none border border-input bg-background px-3 py-2 font-mono text-xs leading-6 outline-none",
+              "focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
+            )}
+          />
+        ) : bodyJson ? (
+          <JsonViewer data={bodyJson} />
+        ) : (
+          <pre className="min-h-[260px] w-full rounded-md border border-input bg-muted px-3 py-2 font-mono text-xs leading-6 overflow-auto max-h-[600px] whitespace-pre-wrap break-all">
+            {body || "(empty)"}
+          </pre>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
