@@ -9,6 +9,7 @@ const BLOCKED_HEADERS = new Set([
   "transfer-encoding",
   "upgrade",
   "content-length",
+  "content-encoding",
 ]);
 
 function cloneHeaders(headers: Headers): Record<string, string> {
