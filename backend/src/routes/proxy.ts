@@ -48,6 +48,7 @@ async function recordStreamingResponse(params: {
 const proxy = new Hono();
 
 proxy.all("/v1/*", async (c) => {
+  console.log(`[PROXY] ${c.req.method} ${c.req.url} from ${c.req.header("x-codex-session-id") || "unknown"}`);
   const requestId = crypto.randomUUID();
   const startTime = Date.now();
   const requestTime = new Date().toISOString();

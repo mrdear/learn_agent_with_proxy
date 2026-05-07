@@ -31,7 +31,59 @@ function parseBody(requestBody: string | null): Record<string, unknown> | null {
 
 function extractMessages(body: Record<string, unknown> | null): Array<{ role: string; content: unknown; tool_calls?: unknown; tool_call_id?: string; name?: string }> | null {
   if (!body) return null;
-  return (body.messages as Array<{ role: string; content: unknown }>) ?? null;
+
+  // OpenAI Chat Completions format: body.messages
+  if (body.messages) {
+    return body.messages as Array<{ role: string; content: unknown; tool_calls?: unknown; tool_call_id?: string; name?: string }>;
+  }
+
+  // OpenAI Responses API format: body.input array
+  if (body.input && Array.isArray(body.input)) {
+    const items = body.input as Array<Record<string, unknown>>;
+    return items
+      .flatMap((item) => {
+        // "message" type items have role/content (explicit type field)
+        if (item.type === "message") {
+          const role = (item.role as string) || "user";
+          const content = item.content;
+          return { role, content };
+        }
+        // Some Responses API inputs have role/content directly without type field
+        if (item.role && (item.role === "user" || item.role === "assistant" || item.role === "system" || item.role === "developer")) {
+          const role = item.role as string;
+          const content = item.content;
+          return { role, content };
+        }
+        // "function_call" type (tool call in request/response)
+        if (item.type === "function_call") {
+          return {
+            role: "function_call",
+            content: JSON.stringify({
+              name: item.name,
+              arguments: item.arguments,
+              call_id: item.call_id,
+            }, null, 2),
+            name: (item.name as string) || "unknown",
+          };
+        }
+        // "function_call_output" type (tool output)
+        if (item.type === "function_call_output") {
+          return {
+            role: "tool",
+            content: item.output ?? item,
+            name: (item.call_id as string) || "function_output",
+          };
+        }
+        // Other types (file_search, web_search, etc.) - show as system info
+        return {
+          role: "system",
+          content: JSON.stringify(item, null, 2),
+        };
+      })
+      .filter(Boolean) as Array<{ role: string; content: unknown; tool_calls?: unknown; tool_call_id?: string; name?: string }>;
+  }
+
+  return null;
 }
 
 function extractSystemPrompt(body: Record<string, unknown> | null, provider: string): string | null {
@@ -47,7 +99,40 @@ function extractSystemPrompt(body: Record<string, unknown> | null, provider: str
     }
   }
 
-  // OpenAI: system / developer role in messages
+  // OpenAI Responses API: "instructions" field
+  if (typeof body.instructions === "string") {
+    return body.instructions;
+  }
+  if (Array.isArray(body.instructions)) {
+    return (body.instructions as Array<{ text?: string }>)
+      .map((i) => i.text || "")
+      .join("\n");
+  }
+
+  // OpenAI Responses API: system role messages in input array
+  if (body.input && Array.isArray(body.input)) {
+    const items = body.input as Array<Record<string, unknown>>;
+    // Handle both explicit type:"message" and direct role field formats
+    const systemItems = items.filter((i) =>
+      (i.type === "message" || !i.type) && (i.role === "system" || i.role === "developer")
+    );
+    if (systemItems.length > 0) {
+      return systemItems
+        .map((item) => {
+          const content = item.content;
+          if (typeof content === "string") return content;
+          if (Array.isArray(content)) {
+            return (content as Array<{ text?: string }>)
+              .map((p) => p.text || "")
+              .join("\n");
+          }
+          return JSON.stringify(content);
+        })
+        .join("\n---\n");
+    }
+  }
+
+  // OpenAI Chat Completions: system / developer role in messages
   const msgs = body.messages as Array<{ role: string; content: unknown }> | undefined;
   if (msgs) {
     const systemMsgs = msgs.filter((m) => m.role === "system" || m.role === "developer");
@@ -71,9 +156,13 @@ function extractSystemPrompt(body: Record<string, unknown> | null, provider: str
 
 interface ToolDef {
   type?: string;
+  // OpenAI Chat Completions format
   function?: { name?: string; description?: string; parameters?: unknown };
+  // OpenAI Responses API format (flat structure)
   name?: string;
   description?: string;
+  parameters?: unknown;
+  // Anthropic format
   input_schema?: unknown;
 }
 
@@ -85,7 +174,7 @@ function extractTools(body: Record<string, unknown> | null): ToolDef[] | null {
 function extractRequestParams(body: Record<string, unknown> | null): Record<string, unknown> | null {
   if (!body) return null;
   const params: Record<string, unknown> = {};
-  const exclude = new Set(["messages", "tools", "system"]);
+  const exclude = new Set(["messages", "input", "tools", "system", "instructions"]);
   for (const [k, v] of Object.entries(body)) {
     if (!exclude.has(k)) params[k] = v;
   }
@@ -93,21 +182,27 @@ function extractRequestParams(body: Record<string, unknown> | null): Record<stri
 }
 
 function getToolName(tool: ToolDef): string {
-  // OpenAI format
+  // OpenAI Chat Completions format: tool.function.name
   if (tool.function?.name) return tool.function.name;
-  // Anthropic format
+  // OpenAI Responses API / Anthropic format: tool.name
   if (tool.name) return tool.name;
   return "(unknown)";
 }
 
 function getToolDescription(tool: ToolDef): string {
+  // OpenAI Chat Completions format
   if (tool.function?.description) return tool.function.description;
+  // OpenAI Responses API / Anthropic format
   if (tool.description) return tool.description;
   return "";
 }
 
 function getToolSchema(tool: ToolDef): unknown {
+  // OpenAI Chat Completions format
   if (tool.function?.parameters) return tool.function.parameters;
+  // OpenAI Responses API format (flat parameters)
+  if (tool.parameters) return tool.parameters;
+  // Anthropic format
   if (tool.input_schema) return tool.input_schema;
   return null;
 }
@@ -144,17 +239,37 @@ const roleMeta: Record<string, { bg: string; label: string }> = {
   user: { bg: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200", label: "User" },
   assistant: { bg: "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200", label: "Assistant" },
   tool: { bg: "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200", label: "Tool Result" },
+  function_call: { bg: "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200", label: "Tool Call" },
 };
+
+// Auto-detect if content is JSON and return parsed object or null
+function tryParseJson(content: string): unknown | null {
+  try {
+    const trimmed = content.trim();
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      return JSON.parse(trimmed);
+    }
+  } catch {
+    // Not valid JSON
+  }
+  return null;
+}
 
 function MessageItem({ msg, index }: { msg: { role: string; content: unknown; tool_calls?: unknown; tool_call_id?: string; name?: string }; index: number }) {
   const meta = roleMeta[msg.role] || { bg: "", label: msg.role };
 
+  // Normalize content to string
   const contentText =
     typeof msg.content === "string"
       ? msg.content
       : msg.content !== null && msg.content !== undefined
         ? JSON.stringify(msg.content, null, 2)
         : "";
+
+  // Auto-detect JSON content from the normalized text
+  const parsedJson = tryParseJson(contentText);
+  const isJsonContent = parsedJson !== null;
 
   const hasToolCalls = msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
 
@@ -165,7 +280,7 @@ function MessageItem({ msg, index }: { msg: { role: string; content: unknown; to
           {meta.label}
         </Badge>
         <span className="text-[10px] text-muted-foreground font-mono">#{index}</span>
-        {msg.role === "tool" && msg.name && (
+        {(msg.role === "tool" || msg.role === "function_call") && msg.name && (
           <span className="text-[10px] text-muted-foreground font-mono">
             fn: {msg.name}
           </span>
@@ -173,7 +288,11 @@ function MessageItem({ msg, index }: { msg: { role: string; content: unknown; to
       </div>
       {contentText && (
         <div className="p-3 overflow-x-auto max-h-[400px] overflow-y-auto">
-          <MarkdownViewer content={contentText} />
+          {isJsonContent ? (
+            <JsonViewer data={parsedJson as object} />
+          ) : (
+            <MarkdownViewer content={contentText} />
+          )}
         </div>
       )}
       {!!hasToolCalls && (
@@ -208,9 +327,14 @@ function ToolCard({ tool, highlight }: { tool: ToolDef; highlight: string }) {
           </p>
         </div>
       )}
-      {schema != null && typeof schema === "object" && (
+      {schema != null && typeof schema === "object" ? (
         <div className="p-3">
           <JsonViewer data={schema} />
+        </div>
+      ) : (
+        // If no schema extracted, show the full tool object as JSON
+        <div className="p-3">
+          <JsonViewer data={tool as object} />
         </div>
       )}
     </div>
@@ -271,8 +395,85 @@ export function LogDetail({
   const systemPrompt = extractSystemPrompt(body, log.provider);
   const tools = extractTools(body);
   const params = extractRequestParams(body);
+
+  // Helper to get effective response body (prefer response_body for streaming, fallback to response_body_finish)
+  const effectiveResponseBody = useMemo(() => {
+    // For streaming responses, response_body contains the full chunks array
+    // For non-streaming, response_body_finish contains the full response
+    if (log.is_streaming && log.response_body) {
+      return log.response_body;
+    }
+    return log.response_body_finish;
+  }, [log.is_streaming, log.response_body, log.response_body_finish]);
+
+  // For openai-responses, also extract response output items and merge with request messages
+  const responseOutput = useMemo(() => {
+    if (log.provider !== "openai-responses" || !effectiveResponseBody) return [];
+    try {
+      const parsed = JSON.parse(effectiveResponseBody) as Record<string, unknown> | Array<Record<string,unknown>>;
+      let output: Array<Record<string, unknown>> | undefined;
+      // Handle SSE streaming events array format
+      if (Array.isArray(parsed)) {
+        const completedEvent = parsed.find(
+          (e) => typeof e === "object" && e !== null && e.type === "response.completed"
+        );
+        const response = completedEvent?.response as Record<string, unknown> | undefined;
+        output = response?.output as Array<Record<string, unknown>> | undefined;
+      } else {
+        // Handle non-streaming response object format
+        output = parsed.output as Array<Record<string, unknown>> | undefined;
+        // Handle case where parsed is a response.completed event object
+        if (!output && parsed.type === "response.completed" && parsed.response) {
+          const response = parsed.response as Record<string, unknown>;
+          output = response.output as Array<Record<string, unknown>> | undefined;
+        }
+      }
+      if (!output) return [];
+      return output
+        .map((item) => {
+          if (item.type === "message") {
+            const role = (item.role as string) || "assistant";
+            const content = item.content as Array<Record<string, unknown>> | undefined;
+            const textContent = content
+              ?.filter((c) => c.type === "output_text")
+              .map((c) => c.text as string)
+              .join("\n");
+            return { role, content: textContent || item };
+          }
+          if (item.type === "function_call") {
+            return {
+              role: "function_call",
+              content: JSON.stringify({
+                name: item.name,
+                arguments: item.arguments,
+                call_id: item.call_id,
+              }, null, 2),
+              name: (item.name as string) || "unknown",
+            };
+          }
+          return {
+            role: "system",
+            content: JSON.stringify(item, null, 2),
+          };
+        })
+        .filter(Boolean) as Array<{ role: string; content: unknown; name?: string }>;
+    } catch {
+      return [];
+    }
+  }, [log.provider, effectiveResponseBody, log.id]);
+
+  // Merge request messages with response output for display
+  const displayMessages = useMemo(() => {
+    const all = [...(messages ?? [])];
+    if (responseOutput.length > 0) {
+      all.push(...responseOutput);
+    }
+    return all;
+  }, [messages, responseOutput]);
+
+  // Show all messages including developer role (OpenAI Responses API uses developer instead of system)
   const nonSystemMessages =
-    messages?.filter((m) => m.role !== "system" && m.role !== "developer") ?? [];
+    displayMessages.filter((m) => m.role !== "system") ?? [];
 
   const [activeTab, setActiveTab] = useState("messages");
   const [replaying, setReplaying] = useState(false);
@@ -456,15 +657,174 @@ export function LogDetail({
         </TabsContent>
 
         <TabsContent value="response" className="mt-4">
-          {log.response_body_finish ? (
+          {effectiveResponseBody ? (
             (() => {
               try {
-                const parsed = JSON.parse(log.response_body_finish);
-                return typeof parsed === "object" && parsed !== null
-                  ? <JsonViewer data={parsed} />
-                  : <div className="max-h-[700px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4"><MarkdownViewer content={log.response_body_finish} /></div>;
+                const parsed = JSON.parse(effectiveResponseBody);
+                if (typeof parsed === "object" && parsed !== null) {
+                  // Check if this is an SSE streaming events array (OpenAI Responses API streaming)
+                  if (Array.isArray(parsed)) {
+                    // Find the response.completed event which has the final output
+                    const completedEvent = parsed.find(
+                      (e) => typeof e === "object" && e !== null && (e as Record<string, unknown>).type === "response.completed"
+                    ) as Record<string, unknown> | undefined;
+                    const response = completedEvent?.response as Record<string, unknown> | undefined;
+                    const output = response?.output as Array<Record<string, unknown>> | undefined;
+                    if (output && output.length > 0) {
+                        return (
+                          <div className="space-y-3">
+                            <p className="text-xs text-muted-foreground">Debug: Found {output.length} output items</p>
+                            {output.map((item, i) => {
+                              // Handle function_call type
+                              if (item.type === "function_call") {
+                                const toolName = (item.name as string) || "unknown";
+                                return (
+                                  <div key={i} className="rounded-md border border-border overflow-hidden">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border">
+                                      <Badge variant="outline" className={roleMeta.function_call.bg}>
+                                        Tool Call
+                                      </Badge>
+                                      <span className="text-[10px] text-muted-foreground font-mono">output #{i}</span>
+                                      <span className="text-[10px] text-muted-foreground font-mono">fn: {toolName}</span>
+                                    </div>
+                                    <div className="p-3 overflow-x-auto max-h-[400px] overflow-y-auto">
+                                      <JsonViewer data={item} />
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              // Handle message type
+                              if (item.type === "message") {
+                                const role = (item.role as string) || "assistant";
+                                const content = item.content as Array<Record<string, unknown>> | undefined;
+                                const textParts = content?.filter((c) => c.type === "output_text" || c.type === "text") || [];
+                                const textContent = textParts.map((p) => (p.text as string) || "").join("\n") || JSON.stringify(item, null, 2);
+                                const respParsedJson = tryParseJson(textContent);
+                                const respIsJsonContent = respParsedJson !== null;
+                                return (
+                                  <div key={i} className="rounded-md border border-border overflow-hidden">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border">
+                                      <Badge variant="outline" className={role === "assistant" ? roleMeta.assistant.bg : roleMeta.system.bg}>
+                                        {role}
+                                      </Badge>
+                                      <span className="text-[10px] text-muted-foreground font-mono">output #{i}</span>
+                                    </div>
+                                    <div className="p-3 overflow-x-auto max-h-[400px] overflow-y-auto">
+                                      {respIsJsonContent ? (
+                                        <JsonViewer data={respParsedJson as object} />
+                                      ) : (
+                                        <MarkdownViewer content={textContent} />
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              // Other types - show as JSON
+                              return (
+                                <div key={i} className="rounded-md border border-border overflow-hidden">
+                                  <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border">
+                                    <Badge variant="outline" className={roleMeta.system.bg}>
+                                      {(item.type as string) || "unknown"}
+                                    </Badge>
+                                    <span className="text-[10px] text-muted-foreground font-mono">output #{i}</span>
+                                  </div>
+                                  <div className="p-3 overflow-x-auto max-h-[400px] overflow-y-auto">
+                                    <JsonViewer data={item} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            <Separator />
+                            <JsonViewer data={parsed} />
+                          </div>
+                        );
+                      }
+                    // No completed event with output, or output is empty - show raw array for debugging
+                    return (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">Debug: Showing raw SSE events (no output found)</p>
+                        <JsonViewer data={parsed} />
+                      </div>
+                    );
+                  }
+                  let data = parsed as Record<string, unknown>;
+                  // Handle case where parsed is a response.completed event object (streaming response final event)
+                  if (data.type === "response.completed" && data.response) {
+                    data = data.response as Record<string, unknown>;
+                  }
+                  // OpenAI Responses API format: output array (non-streaming)
+                  if (data.output && Array.isArray(data.output)) {
+                    const outputItems = data.output as Array<Record<string, unknown>>;
+                    // Handle both message and function_call types
+                    const displayItems = outputItems.filter((item) => item.type === "message" || item.type === "function_call");
+                    if (displayItems.length > 0) {
+                      return (
+                        <div className="space-y-3">
+                          {displayItems.map((item, i) => {
+                            // Handle function_call type
+                            if (item.type === "function_call") {
+                              const toolName = (item.name as string) || "unknown";
+                              return (
+                                <div key={i} className="rounded-md border border-border overflow-hidden">
+                                  <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border">
+                                    <Badge variant="outline" className={roleMeta.function_call.bg}>
+                                      Tool Call
+                                    </Badge>
+                                    <span className="text-[10px] text-muted-foreground font-mono">output #{i}</span>
+                                    <span className="text-[10px] text-muted-foreground font-mono">fn: {toolName}</span>
+                                  </div>
+                                  <div className="p-3 overflow-x-auto max-h-[400px] overflow-y-auto">
+                                    <JsonViewer data={item} />
+                                  </div>
+                                </div>
+                              );
+                            }
+                            // Handle message type
+                            const role = (item.role as string) || "assistant";
+                            const content = item.content as Array<Record<string, unknown>> | undefined;
+                            const textParts = content?.filter((c) => c.type === "output_text" || c.type === "text") || [];
+                            const textContent = textParts.map((p) => (p.text as string) || "").join("\n") || JSON.stringify(item, null, 2);
+                            // Auto-detect JSON in response content
+                            const respParsedJson = tryParseJson(textContent);
+                            const respIsJsonContent = respParsedJson !== null;
+                            return (
+                              <div key={i} className="rounded-md border border-border overflow-hidden">
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border">
+                                  <Badge variant="outline" className={role === "assistant" ? roleMeta.assistant.bg : roleMeta.system.bg}>
+                                    {role}
+                                  </Badge>
+                                  <span className="text-[10px] text-muted-foreground font-mono">output #{i}</span>
+                                </div>
+                                <div className="p-3 overflow-x-auto max-h-[400px] overflow-y-auto">
+                                  {respIsJsonContent ? (
+                                    <JsonViewer data={respParsedJson as object} />
+                                  ) : (
+                                    <MarkdownViewer content={textContent} />
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <Separator />
+                          <JsonViewer data={parsed} />
+                        </div>
+                      );
+                    }
+                    // data.output exists but no displayable items
+                    return (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">Debug: output exists but no message/function_call items</p>
+                        <JsonViewer data={parsed} />
+                      </div>
+                    );
+                  }
+                  // data.output is not an array
+                  return <JsonViewer data={parsed} />;
+                }
+                // parsed is not an object
+                return <div className="max-h-[700px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4"><MarkdownViewer content={effectiveResponseBody} /></div>;
               } catch {
-                return <div className="max-h-[700px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4"><MarkdownViewer content={log.response_body_finish} /></div>;
+                return <div className="max-h-[700px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4"><MarkdownViewer content={effectiveResponseBody} /></div>;
               }
             })()
           ) : (

@@ -67,15 +67,18 @@ function hasToolCalls(log: LogEntry): boolean {
   if (!text) return false;
   try {
     const data = JSON.parse(text) as Record<string, unknown>;
-    // OpenAI format: choices[].message.tool_calls
+    // OpenAI Chat Completions: choices[].message.tool_calls
     const choices = data.choices as Array<Record<string, unknown>> | undefined;
     if (choices?.some((c) => {
       const msg = c.message as Record<string, unknown> | undefined;
       return msg?.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
     })) return true;
-    // Anthropic format: content[] with type "tool_use"
+    // Anthropic: content[] with type "tool_use"
     const content = data.content as Array<Record<string, unknown>> | undefined;
     if (content?.some((b) => b.type === "tool_use")) return true;
+    // OpenAI Responses API: output[] with type "function_call"
+    const output = data.output as Array<Record<string, unknown>> | undefined;
+    if (output?.some((item) => item.type === "function_call")) return true;
   } catch {
     // not JSON
   }
@@ -86,21 +89,44 @@ function extractFirstUserMessage(log: LogEntry): string | null {
   if (!log.request_body) return null;
   try {
     const body = JSON.parse(log.request_body) as Record<string, unknown>;
+
+    // OpenAI Chat Completions format: body.messages
     const messages = body.messages as Array<{ role: string; content: unknown }> | undefined;
-    if (!messages) return null;
-    const userMsg = messages.find((m) => m.role === "user");
-    if (!userMsg) return null;
-    if (typeof userMsg.content === "string") return userMsg.content;
-    if (Array.isArray(userMsg.content)) {
-      const textPart = (userMsg.content as Array<Record<string, unknown>>).find(
-        (p) => p.type === "text" && typeof p.text === "string"
-      );
-      return (textPart?.text as string) ?? null;
+    if (messages) {
+      const userMsg = messages.find((m) => m.role === "user");
+      if (!userMsg) return null;
+      if (typeof userMsg.content === "string") return userMsg.content;
+      if (Array.isArray(userMsg.content)) {
+        const textPart = (userMsg.content as Array<Record<string, unknown>>).find(
+          (p) => p.type === "text" && typeof p.text === "string"
+        );
+        return (textPart?.text as string) ?? null;
+      }
+      return null;
     }
-    return null;
+
+    // OpenAI Responses API format: body.input array
+    const input = body.input as Array<Record<string, unknown>> | undefined;
+    if (input) {
+      // Handle both explicit type:"message" and direct role field formats
+      const userItem = input.find((item) =>
+        (item.type === "message" || !item.type) && item.role === "user"
+      );
+      if (!userItem) return null;
+      const content = userItem.content;
+      if (typeof content === "string") return content;
+      if (Array.isArray(content)) {
+        const textPart = content.find(
+          (p: Record<string, unknown>) => p.type === "input_text" && typeof p.text === "string"
+        );
+        return (textPart?.text as string) ?? null;
+      }
+      return null;
+    }
   } catch {
     return null;
   }
+  return null;
 }
 
 function hasToolsDefined(log: LogEntry): boolean {

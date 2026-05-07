@@ -8,6 +8,7 @@ export type Tokens = {
 export type StreamSummary = {
   text: string;
   tokens: Tokens;
+  tools?: Array<{ name: string; arguments: string; call_id: string }>;
 };
 
 export type RequestBodyInspection = {
@@ -135,12 +136,12 @@ function extractAnthropicTokens(data: Record<string, unknown>): Tokens {
 }
 
 export function detectProvider(headers: Headers, path: string): Provider {
-  if (path.includes("/messages") || headers.get("anthropic-version")) {
-    return "anthropic";
-  }
-
   if (path.includes("/responses")) {
     return "openai-responses";
+  }
+
+  if (path.includes("/messages") || headers.get("anthropic-version")) {
+    return "anthropic";
   }
 
   return "openai";
@@ -184,23 +185,45 @@ function extractOpenAIResponsesTokens(data: Record<string, unknown>): Tokens {
 function summarizeResponsesStream(chunks: unknown[]): StreamSummary {
   let text = "";
   let tokens: Tokens = { input: null, output: null };
+  const tools: Array<{ name: string; arguments: string; call_id: string }> = [];
 
   for (const chunk of chunks) {
     const item = chunk as Record<string, unknown>;
 
-    if (item.type === "response.output_text.delta" && typeof item.delta === "string") {
-      text += item.delta;
-    }
+    if (item.type === "response.completed" && item.response) {
+      const response = item.response as Record<string, unknown>;
+      tokens = extractOpenAIResponsesTokens(response);
 
-    if (item.type === "response.completed") {
-      const response = item.response as Record<string, unknown> | undefined;
-      if (response) {
-        tokens = extractOpenAIResponsesTokens(response);
+      const output = response.output as Array<Record<string, unknown>> | undefined;
+      if (output) {
+        for (const outItem of output) {
+          if (outItem.type === "function_call" && typeof outItem.name === "string") {
+            tools.push({
+              name: outItem.name,
+              arguments: (outItem.arguments as string) || "",
+              call_id: (outItem.call_id as string) || "",
+            });
+          } else if (outItem.type === "message") {
+            const content = outItem.content as Array<Record<string, unknown>> | undefined;
+            if (content) {
+              for (const part of content) {
+                if (part.type === "output_text" && typeof part.text === "string") {
+                  text += part.text;
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
 
-  return { text, tokens };
+  // If no text but has tool calls, include them in the summary text
+  if (!text && tools.length > 0) {
+    text = tools.map((t) => `Tool call: ${t.name}(${t.arguments})`).join("\n");
+  }
+
+  return { text, tokens, tools: tools.length > 0 ? tools : undefined };
 }
 
 export function summarizeStream(provider: Provider, chunks: unknown[]): StreamSummary {

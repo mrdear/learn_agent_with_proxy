@@ -1,5 +1,7 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useState } from "react";
+import { Copy, Check } from "@phosphor-icons/react";
 
 interface MarkdownViewerProps {
   content: string;
@@ -7,8 +9,27 @@ interface MarkdownViewerProps {
 }
 
 export function MarkdownViewer({ content, className }: MarkdownViewerProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback for environments where clipboard API is unavailable
+    }
+  };
+
   return (
-    <div className={`prose prose-sm dark:prose-invert max-w-none break-words ${className ?? ""}`}>
+    <div className={`prose prose-sm dark:prose-invert max-w-none break-words relative group ${className ?? ""}`}>
+      <button
+        onClick={handleCopy}
+        className="absolute top-1 right-1 z-10 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 focus:opacity-100"
+      >
+        {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? "Copied" : "Copy"}
+      </button>
       <Markdown
         remarkPlugins={[remarkGfm]}
         children={content}
