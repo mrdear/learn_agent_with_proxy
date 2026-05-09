@@ -24,20 +24,29 @@ const PROXY_URL = "http://localhost:3000";
 const OPENAI_SNIPPET = `import OpenAI from "openai";
 
 const client = new OpenAI({
-  baseURL: "http://localhost:3000",
+  baseURL: "http://localhost:3000/v1",
   apiKey: "sk-local-proxy",
 });`;
+
+const OPENAI_RESPONSES_SNIPPET = `// OpenAI Responses API (用于特定的集成，如 Junie)
+curl http://localhost:3000/v1/responses \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer sk-local-proxy" \\
+  -d '{
+    "model": "gpt-4o",
+    "messages": [{ "role": "user", "content": "Hello" }]
+  }'`;
 
 const ANTHROPIC_SNIPPET = `import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
-  baseURL: "http://localhost:3000",
+  baseURL: "http://localhost:3000/v1",
   apiKey: "sk-local-proxy",
 });`;
 
-const CURL_SNIPPET = `curl http://localhost:3000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-local-proxy" \
+const CURL_SNIPPET = `curl http://localhost:3000/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer sk-local-proxy" \\
   -d '{
     "model": "gpt-4.1-mini",
     "messages": [
@@ -45,15 +54,16 @@ const CURL_SNIPPET = `curl http://localhost:3000/v1/chat/completions \
     ]
   }'`;
 
-const BACKEND_ENV_SNIPPET = `PORT=3000
+const BACKEND_ENV_SNIPPET = `# 代理服务的端口
+PORT=3000
+
+# 数据库文件路径 (用于存储日志)
 DATABASE_URL=./proxy.db
 
-OPENAI_API_KEY=sk-your-key
-OPENAI_BASE_URL=https://openrouter.ai/api
-OPENAI_DEFAULT_MODEL=gpt-4.1-mini
-# Optional:
-# OPENAI_HTTP_REFERER=http://localhost:3000
-# OPENAI_TITLE=Learn Agent With Proxy`;
+# 上游 API 配置 (目前支持 OpenRouter 格式)
+OPENAI_API_KEY=sk-your-openrouter-key
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_DEFAULT_MODEL=gpt-4.1-mini`;
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -86,13 +96,13 @@ function CopyButton({ text }: { text: string }) {
   };
 
   return (
-    <Button type="button" variant="default" size="xs" className="shadow-sm" onClick={handleCopy}>
+    <Button type="button" variant="default" size="xs" className="h-7 px-2 text-[10px]" onClick={handleCopy}>
       {copied ? (
-        <CheckIcon data-icon="inline-start" />
+        <CheckIcon className="mr-1 size-3" />
       ) : (
-        <CopySimpleIcon data-icon="inline-start" />
+        <CopySimpleIcon className="mr-1 size-3" />
       )}
-      {copied ? "Copied" : "Copy"}
+      {copied ? "已复制" : "复制"}
     </Button>
   );
 }
@@ -107,18 +117,18 @@ function SnippetCard({
   code: string;
 }) {
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="border-b border-border/70">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <CardTitle>{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
+    <Card className="overflow-hidden border-border/50 bg-card/50">
+      <CardHeader className="bg-muted/30 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <CardTitle className="text-sm font-medium">{title}</CardTitle>
+            <CardDescription className="text-xs">{description}</CardDescription>
           </div>
           <CopyButton text={code} />
         </div>
       </CardHeader>
-      <CardContent className="pt-4">
-        <pre className="max-h-[420px] overflow-x-auto overflow-y-auto rounded-none border border-border bg-muted p-4 font-mono text-xs leading-6 whitespace-pre-wrap break-all">
+      <CardContent className="p-0">
+        <pre className="max-h-[300px] overflow-auto bg-muted/20 p-4 font-mono text-[11px] leading-relaxed">
           <code>{code}</code>
         </pre>
       </CardContent>
@@ -138,15 +148,27 @@ function StepCard({
   tone?: "default" | "secondary" | "outline";
 }) {
   return (
-    <Card className={cn(tone !== "outline" && "ring-1", tone === "default" && "ring-primary/15 bg-primary/5", tone === "secondary" && "ring-secondary/15 bg-secondary/20")}>
-      <CardHeader className="gap-3">
-        <Badge variant={tone} className="w-fit font-mono shadow-sm">
-          {step}
-        </Badge>
-        <div className="flex flex-col gap-1">
-          <CardTitle>{title}</CardTitle>
-          <CardDescription>{description}</CardDescription>
+    <Card className={cn(
+      "relative overflow-hidden transition-all hover:shadow-md",
+      tone === "default" && "border-primary/20 bg-primary/5",
+      tone === "secondary" && "border-secondary/20 bg-secondary/5",
+      tone === "outline" && "border-border/50 bg-card"
+    )}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <span className={cn(
+            "flex size-7 items-center justify-center rounded-full font-mono text-xs font-bold",
+            tone === "default" && "bg-primary text-primary-foreground",
+            tone === "secondary" && "bg-secondary text-secondary-foreground",
+            tone === "outline" && "bg-muted text-muted-foreground"
+          )}>
+            {step}
+          </span>
+          <CardTitle className="text-base">{title}</CardTitle>
         </div>
+        <CardDescription className="pt-1 text-xs leading-relaxed">
+          {description}
+        </CardDescription>
       </CardHeader>
     </Card>
   );
@@ -163,29 +185,21 @@ function FactRow({
   copyable?: boolean;
   tone?: "default" | "secondary" | "outline";
 }) {
-  const valueToneClass =
-    tone === "default"
-      ? "border-primary/25 bg-primary/10 text-foreground shadow-sm"
-      : tone === "secondary"
-        ? "border-secondary/40 bg-secondary/30 text-foreground"
-        : "border-border bg-muted/30 text-foreground";
-
   return (
-    <div className="flex items-center justify-between gap-3 rounded-none border border-border px-3 py-2">
-      <div className="flex flex-col gap-1">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+    <div className="group flex items-center justify-between gap-4 rounded-lg border border-border/50 bg-muted/30 p-3 transition-colors hover:bg-muted/50">
+      <div className="flex flex-col gap-1 overflow-hidden">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
           {label}
-        </p>
-        <div
-          className={cn(
-            "max-w-full rounded-none border px-3 py-1.5 font-mono text-xs leading-5 break-all",
-            valueToneClass
-          )}
-        >
+        </span>
+        <code className={cn(
+          "truncate font-mono text-xs font-medium",
+          tone === "default" && "text-primary",
+          tone === "secondary" && "text-secondary-foreground"
+        )}>
           {value}
-        </div>
+        </code>
       </div>
-      {copyable ? <CopyButton text={value} /> : null}
+      {copyable && <CopyButton text={value} />}
     </div>
   );
 }
@@ -193,32 +207,41 @@ function FactRow({
 function ProviderTabs() {
   return (
     <Tabs defaultValue="openai" className="w-full">
-      <TabsList variant="line" className="flex-wrap">
+      <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
         <TabsTrigger value="openai">OpenAI SDK</TabsTrigger>
+        <TabsTrigger value="responses">Responses API</TabsTrigger>
         <TabsTrigger value="anthropic">Anthropic SDK</TabsTrigger>
         <TabsTrigger value="curl">cURL</TabsTrigger>
       </TabsList>
 
       <TabsContent value="openai" className="mt-4">
         <SnippetCard
-          title="OpenAI SDK"
-          description="Use the local proxy as the base URL, and let the backend handle upstream auth."
+          title="OpenAI SDK 配置"
+          description="将 baseURL 指向本地代理的 /v1 路径即可。"
           code={OPENAI_SNIPPET}
+        />
+      </TabsContent>
+
+      <TabsContent value="responses" className="mt-4">
+        <SnippetCard
+          title="OpenAI Responses API"
+          description="支持特殊的 /responses 路径，通常用于 Realtime 或自定义集成。"
+          code={OPENAI_RESPONSES_SNIPPET}
         />
       </TabsContent>
 
       <TabsContent value="anthropic" className="mt-4">
         <SnippetCard
-          title="Anthropic SDK"
-          description="The proxy forwards Anthropic requests through OpenRouter and rewrites the upstream key."
+          title="Anthropic SDK 配置"
+          description="代理会自动将请求转换为 OpenRouter 兼容格式。"
           code={ANTHROPIC_SNIPPET}
         />
       </TabsContent>
 
       <TabsContent value="curl" className="mt-4">
         <SnippetCard
-          title="cURL smoke test"
-          description="A quick check that the proxy is reachable and logs a chat completion."
+          title="快速测试 (cURL)"
+          description="无需 SDK，直接通过命令行验证代理是否工作。"
           code={CURL_SNIPPET}
         />
       </TabsContent>
@@ -232,137 +255,149 @@ export function DashboardPage({
   onNavigate: (path: RoutePath) => void;
 }) {
   return (
-    <div className="flex flex-col gap-6">
-      <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-        <Card className="relative overflow-hidden ring-1 ring-primary/10 bg-primary/5">
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute -top-10 right-0 size-56 rounded-full bg-foreground/5 blur-3xl" />
-            <div className="absolute -bottom-20 left-24 size-72 rounded-full bg-muted/70 blur-3xl" />
+    <div className="mx-auto flex max-w-5xl flex-col gap-10 py-4">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden rounded-3xl border border-primary/10 bg-gradient-to-br from-primary/10 via-background to-background p-8 lg:p-12">
+        <div className="relative z-10 flex flex-col gap-6 lg:max-w-2xl">
+          <Badge variant="outline" className="w-fit border-primary/20 bg-primary/5 px-3 py-1 text-primary">
+            使用指南 & 配置说明
+          </Badge>
+          <div className="flex flex-col gap-4">
+            <h1 className="text-3xl font-bold tracking-tight lg:text-5xl">
+              把你的 AI 客户端<br />
+              <span className="text-primary">指向本地代理</span>
+            </h1>
+            <p className="text-base text-muted-foreground lg:text-lg">
+              通过将 API 基础地址切换到本地服务，你可以透明地观察所有 AI 请求，
+              自动路由到 OpenRouter，并持久化每一条对话日志。
+            </p>
           </div>
-          <CardHeader className="relative gap-3">
-            <Badge variant="default" className="w-fit shadow-sm">
-              Setup guide
-            </Badge>
-            <div className="flex flex-col gap-2">
-              <CardTitle className="text-2xl lg:text-3xl">
-                把你的 AI 客户端指向本地代理
-              </CardTitle>
-              <CardDescription className="max-w-2xl text-sm">
-                只要把 base URL 切到这个本地服务，后端就会帮你转发到
-                OpenRouter，并把请求与响应写入日志。
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="relative flex flex-wrap items-center gap-3">
-            <Button type="button" size="lg" className="shadow-sm" onClick={() => onNavigate("/logs")}>
-              Open logs
-              <ArrowRightIcon data-icon="inline-end" />
+          <div className="flex flex-wrap items-center gap-4">
+            <Button size="lg" className="h-12 px-8 shadow-lg shadow-primary/20" onClick={() => onNavigate("/logs")}>
+              查看实时日志
+              <ArrowRightIcon className="ml-2 size-4" />
             </Button>
-            <Button type="button" variant="secondary" size="lg" onClick={() => onNavigate("/compare")}>
-              Compare logs
+            <Button variant="outline" size="lg" className="h-12 px-8" onClick={() => onNavigate("/compare")}>
+              对比模型响应
             </Button>
-            <Badge variant="default" className="gap-1.5 shadow-sm">
-              <LightningIcon data-icon="inline-start" />
-              Local proxy
-            </Badge>
-          </CardContent>
-        </Card>
-
-        <Card className="ring-1 ring-border/70 bg-card">
-          <CardHeader>
-            <CardTitle>Connection points</CardTitle>
-            <CardDescription>
-              These are the only URLs most users need to change.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <FactRow label="Proxy URL" value={PROXY_URL} copyable tone="default" />
-            <FactRow label="OpenAI route" value="/v1/chat/completions" tone="secondary" />
-            <FactRow label="Anthropic route" value="/v1/messages" tone="secondary" />
-            <FactRow label="Relay upstream" value="OpenRouter" tone="secondary" />
-            <FactRow label="Logs route" value="/logs" tone="outline" />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+        <div className="absolute -right-20 -top-20 hidden size-96 rounded-full bg-primary/5 blur-3xl lg:block" />
       </section>
 
-      <Separator />
+      {/* Connection Points */}
+      <section className="grid gap-8 lg:grid-cols-[1fr_0.8fr]">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-2xl font-semibold tracking-tight">快速配置连接点</h2>
+            <p className="text-sm text-muted-foreground">
+              大多数情况下，你只需要修改代码中的 baseURL 或环境变量。
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FactRow label="代理基础 URL" value={PROXY_URL} copyable tone="default" />
+            <FactRow label="OpenAI 兼容路径" value="/v1/chat/completions" tone="secondary" />
+            <FactRow label="OpenAI Responses" value="/v1/responses" tone="secondary" />
+            <FactRow label="Anthropic 兼容路径" value="/v1/messages" tone="secondary" />
+          </div>
+        </div>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <StepCard
-          step="01"
-          title="Run the backend"
-          description="Start the proxy server and confirm it is listening on http://localhost:3000."
-          tone="default"
-        />
-        <StepCard
-          step="02"
-          title="Swap the base URL"
-          description="Point your SDK or HTTP client to the local proxy, and use any placeholder apiKey you like."
-          tone="secondary"
-        />
-        <StepCard
-          step="03"
-          title="Check the logs"
-          description="Send one request, then open /logs to verify provider, model, tokens, and streaming chunks."
-          tone="outline"
-        />
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-2xl font-semibold tracking-tight">后端环境变量</h2>
+            <p className="text-sm text-muted-foreground">
+              确保 <code>backend/.env</code> 文件已正确配置。
+            </p>
+          </div>
+          <Card className="border-border/50">
+            <CardContent className="p-0">
+              <pre className="overflow-auto bg-muted/20 p-4 font-mono text-[11px] leading-relaxed">
+                <code>{BACKEND_ENV_SNIPPET}</code>
+              </pre>
+            </CardContent>
+          </Card>
+        </div>
       </section>
 
-      <section className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <p className="text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-            Client snippets
+      <Separator className="opacity-50" />
+
+      {/* Steps */}
+      <section className="flex flex-col gap-8">
+        <div className="flex flex-col gap-2 text-center">
+          <h2 className="text-2xl font-semibold tracking-tight">三个步骤开始工作</h2>
+          <p className="text-sm text-muted-foreground">
+            只需几分钟，即可完成开发环境的 AI 观测配置。
           </p>
-          <h2 className="text-lg font-medium tracking-tight">
-            Use the same API shape, just change the destination
-          </h2>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StepCard
+            step="01"
+            title="启动后端服务"
+            description="在 backend 目录下运行 pnpm dev，确保服务在 3000 端口监听。"
+            tone="default"
+          />
+          <StepCard
+            step="02"
+            title="修改 Base URL"
+            description="将你的 SDK 或客户端地址指向 http://localhost:3000/v1，API Key 可填任意值。"
+            tone="secondary"
+          />
+          <StepCard
+            step="03"
+            title="观察与调试"
+            description="发起一次请求后，在日志页面查看完整的 Provider、模型、Token 及流式响应。"
+            tone="outline"
+          />
+        </div>
+      </section>
+
+      {/* Code Snippets */}
+      <section className="flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-2xl font-semibold tracking-tight">代码集成示例</h2>
+          <p className="text-sm text-muted-foreground">
+            保持现有的 API 调用逻辑，仅需更改目标地址。
+          </p>
         </div>
         <ProviderTabs />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-        <SnippetCard
-          title="Backend .env"
-          description="These values control the OpenRouter relay used by the proxy."
-          code={BACKEND_ENV_SNIPPET}
-        />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>What to verify</CardTitle>
-            <CardDescription>
-              After one request, these fields should start showing up in the logs.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex items-start gap-3">
-              <Badge variant="outline" className="mt-0.5 font-mono">
-                provider
-              </Badge>
-              <p className="text-xs text-muted-foreground">
-                Should be <span className="text-foreground">openai</span> or{" "}
-                <span className="text-foreground">anthropic</span>.
-              </p>
+      {/* Verification Card */}
+      <section className="rounded-3xl border border-border bg-muted/20 p-8">
+        <div className="grid gap-8 lg:grid-cols-2">
+          <div className="flex flex-col gap-4">
+            <h3 className="text-xl font-semibold">验证日志字段</h3>
+            <p className="text-sm text-muted-foreground">
+              成功发送请求后，你应该在日志详情中看到以下关键信息，这有助于你确认代理逻辑是否正确执行。
+            </p>
+            <div className="flex flex-col gap-3">
+              {[
+                { field: "provider", desc: "应显示 openai, anthropic 或 openai-responses。" },
+                { field: "request_body", desc: "包含你的提示词、消息列表及工具调用定义。" },
+                { field: "response_body_finish", desc: "合并后的最终回复内容（包括流式响应）。" },
+                { field: "duration_ms", desc: "记录从发起请求到接收完成的总耗时。" }
+              ].map((item) => (
+                <div key={item.field} className="flex items-start gap-3">
+                  <Badge variant="secondary" className="mt-0.5 font-mono text-[10px]">
+                    {item.field}
+                  </Badge>
+                  <p className="text-xs text-muted-foreground/90">{item.desc}</p>
+                </div>
+              ))}
             </div>
-            <div className="flex items-start gap-3">
-              <Badge variant="outline" className="mt-0.5 font-mono">
-                request_body
-              </Badge>
-              <p className="text-xs text-muted-foreground">
-                Should contain the prompt, messages, and any tools you passed in.
-              </p>
+          </div>
+          <div className="flex items-center justify-center">
+            <div className="relative size-48 rounded-2xl bg-gradient-to-tr from-primary/20 to-secondary/20 p-6">
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                <LightningIcon className="size-12 text-primary" weight="fill" />
+                <span className="text-sm font-bold">代理运行中</span>
+                <span className="text-[10px] text-muted-foreground">Ready for connections</span>
+              </div>
             </div>
-            <div className="flex items-start gap-3">
-              <Badge variant="outline" className="mt-0.5 font-mono">
-                response_body_finish
-              </Badge>
-              <p className="text-xs text-muted-foreground">
-                Should show the final assistant text, even for streaming responses.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </section>
     </div>
   );
 }
+
