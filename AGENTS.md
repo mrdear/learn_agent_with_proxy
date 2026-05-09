@@ -131,22 +131,24 @@ ANTHROPIC_BASE_URL=https://api.anthropic.com
 - `OPENAI_BASE_URL`: OpenAI 兼容接口的基础 URL，可配置为第三方代理或自建服务
 - `ANTHROPIC_BASE_URL`: Anthropic 兼容接口的基础 URL，可配置为第三方代理或自建服务
 
-### 启动步骤
+### 启动步骤 (推荐)
 
-1. **安装依赖** (在项目根目录):
+项目根目录已配置好集成脚本，可直接通过 `pnpm` 运行。
+
+1. **一键构建并启动 (生产模式)**:
    ```bash
-   pnpm install
+   pnpm start
+   ```
+   该命令会自动：构建前端 (webui) -> 编译后端 (backend) -> 启动后端服务并托管前端。
+
+2. **仅构建前端**:
+   ```bash
+   pnpm build:webui
    ```
 
-2. **前端构建**:
-   ```bash
-   pnpm --filter webui build
-   ```
-
-3. **后端启动**:
-   ```bash
-   pnpm --filter backend dev
-   ```
+3. **开发模式 (前后端分离启动)**:
+   - 启动后端 API: `pnpm dev:backend`
+   - 启动前端 Vite: `pnpm dev:webui`
 
 4. **客户端配置**:
    将你的 AI SDK Base URL 指向 `http://localhost:3000`。
