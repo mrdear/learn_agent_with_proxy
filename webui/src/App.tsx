@@ -1,9 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { AppShell } from "@/components/app-shell";
-import { ComparePage } from "@/pages/compare-page";
-import { DashboardPage } from "@/pages/dashboard-page";
-import { LogsPage } from "@/pages/logs-page";
 import { getRouteMeta, normalizeRoute, type RoutePath } from "@/lib/routes";
+import { getStrategy } from "@/strategies";
 
 function useRouteState() {
   const pathname = useSyncExternalStore<RoutePath>(
@@ -42,6 +40,7 @@ function useRouteState() {
 function App() {
   const { pathname, navigate } = useRouteState();
   const currentRoute = getRouteMeta(pathname);
+  const strategy = getStrategy(pathname);
 
   useEffect(() => {
     document.title = `${currentRoute.label} · Learn Agent With Proxy`;
@@ -49,13 +48,7 @@ function App() {
 
   return (
     <AppShell pathname={pathname} onNavigate={navigate}>
-      {pathname === "/logs" ? (
-        <LogsPage onNavigate={navigate} />
-      ) : pathname === "/compare" ? (
-        <ComparePage onNavigate={navigate} />
-      ) : (
-        <DashboardPage onNavigate={navigate} />
-      )}
+      {strategy.render(navigate)}
     </AppShell>
   );
 }
