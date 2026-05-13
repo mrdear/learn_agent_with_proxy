@@ -26,6 +26,20 @@ pnpm build
 pnpm start
 ```
 
+## 核心规约
+
+项目按前后端分离维护，生产模式由后端托管前端构建产物。客户端 SDK 的 Base URL 指向 `http://localhost:3000`。
+
+不同 API 风格的差异要收敛在策略层：
+
+- 后端 provider 差异放在 `backend/src/lib/strategies/`，公共代理流程通过 `getRelayStrategy(provider)` 使用策略。
+- 前端日志解析差异放在 `webui/src/lib/log-parsing/`，展示组件通过 `parseLog(log)` 使用归一化结果。
+- `LogDetail`、`LogTable`、`ComparePage` 不直接解析 OpenAI、Anthropic 等私有字段。
+
+新增 API 风格时，优先新增后端 strategy 和前端 adapter。字段需要展示时，先扩展归一化类型，再让对应策略填充。
+
+详细设计看 [docs/strategy-design.md](docs/strategy-design.md)。
+
 ## 改动入口
 
 - 改代理转发、Token 提取、流式汇总：看 [docs/strategy-design.md](docs/strategy-design.md) 的后端策略。
