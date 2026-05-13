@@ -1,162 +1,121 @@
-# Learn Agent With Proxy (Agent 学习代理)
+# Learn Agent With Proxy
 
-本项目旨在通过本地代理服务，拦截并保存 OpenAI 和 Anthropic 的请求与响应，将其存入 SQLite 数据库。通过观察和分析这些成熟 Agent 的 Prompt 设计，帮助开发者学习如何构建高效性 AI Agent。
+本项目用本地代理捕获 OpenAI、Anthropic 及兼容接口的请求和响应，写入 SQLite，并在 Web UI 中展示 Prompt、参数、Token、耗时、流式 chunk 和工具调用信息。
 
-## 核心架构
+## 项目结构
 
-系统采用前后端分离架构，但最终前端会被打包并由后端统一托管：
+- `backend/`: Hono 后端，负责代理转发、日志入库、回放、静态资源托管。
+- `webui/`: React + Vite 前端，使用 shadcn/ui 展示日志列表、详情、对比和回放入口。
+- `scripts/`: 根目录构建和启动脚本。
+- `pnpm-workspace.yaml`: monorepo workspace 配置。
 
-- **后端 (Hono)**:
-    - 充当反向代理服务器。
-    - 拦截 `/v1/chat/completions` (OpenAI) 和 `/v1/messages` (Anthropic) 等请求。
-    - 将请求体（提示词、参数）和响应体存入 SQLite。
-    - 转发请求到目标服务器并返回结果给原始客户端。
-    - 提供 API 给前端展示数据。
-    - 托管前端静态资源。
-- **前端 (React/Vite + shadcn/ui)**:
-    - 使用 **shadcn/ui** 作为 UI 组件库（基于 BASE UI + Tailwind CSS）。
-    - 界面化展示捕获的请求列表。
-    - 详细展示 Prompt 内容、模型参数、消耗 Token 等。
-    - 支持按时间、模型、平台等维度进行过滤。
-    - 组件按需安装：`pnpm dlx shadcn@latest add <component-name>`
-- **数据库 (SQLite)**:
-    - 存储请求流水，包括原始 Prompt、系统提示词、多轮对话内容等。
+项目使用 `pnpm`。根目录常用命令：
 
-## 详细设计
-
-### 1. 数据库模型 (SQLite)
-
-主要包含一张 `logs` 表：
-
-```sql
-CREATE TABLE logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    
-    -- 请求信息
-    provider TEXT NOT NULL,           -- 服务提供商: openai / anthropic
-    endpoint TEXT NOT NULL,           -- 请求端点路径
-    method TEXT NOT NULL,             -- HTTP 方法: POST / GET 等
-    request_headers TEXT,             -- 请求头 (JSON 格式)
-    request_body TEXT,                -- 原始请求体 (JSON 格式，包含 Prompt)
-    
-    -- 响应信息
-    response_status INTEGER,          -- HTTP 响应状态码
-    response_body TEXT,               -- 流式响应时存储每个 chunk (JSON 数组)
-    response_body_finish TEXT,        -- 最终完整响应内容 (流式拼接后或非流式原始响应)
-    
-    -- Token 统计
-    input_tokens INTEGER,             -- 输入 Token 数
-    output_tokens INTEGER,            -- 输出 Token 数
-    
-    -- 时间信息
-    request_time TEXT NOT NULL,       -- 请求发起时间 (ISO 8601)
-    response_time TEXT,               -- 响应完成时间 (ISO 8601)
-    duration_ms INTEGER,              -- 请求耗时 (毫秒)
-    
-    -- 附加信息
-    model TEXT,                       -- 使用的模型名称
-    is_streaming INTEGER DEFAULT 0,   -- 是否为流式请求 (0: 否, 1: 是)
-    error TEXT,                       -- 错误信息 (如有)
-    
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+```bash
+pnpm dev:backend
+pnpm dev:webui
+pnpm build:webui
+pnpm build
+pnpm start
 ```
 
-**字段说明：**
+客户端 SDK 的 Base URL 指向 `http://localhost:3000`。
 
-| 分类 | 字段 | 说明 |
-| :--- | :--- | :--- |
-| 请求 | `provider` | 服务提供商标识 (`openai` / `anthropic`) |
-| 请求 | `endpoint` | 完整请求路径，如 `/v1/chat/completions` |
-| 请求 | `method` | HTTP 方法 |
-| 请求 | `request_headers` | 请求头 JSON (可用于分析 API Key 来源等) |
-| 请求 | `request_body` | 原始请求体，包含完整的 messages 数组和参数 |
-| 响应 | `response_status` | HTTP 状态码 |
-| 响应 | `response_body` | **流式响应专用**：存储所有 SSE chunk 的 JSON 数组，便于回放分析 |
-| 响应 | `response_body_finish` | 最终完整响应：流式时为拼接后的完整内容，非流式时为原始响应 |
-| 统计 | `input_tokens` / `output_tokens` | Token 消耗统计 |
-| 时间 | `request_time` / `response_time` | 请求/响应时间戳 |
-| 时间 | `duration_ms` | 总耗时，用于性能分析 |
-| 附加 | `is_streaming` | 标记是否为流式请求，便于前端区分展示 |
-| 附加 | `error` | 捕获的错误信息 |
+## 后端约定
 
-### 2. 后端代理逻辑
+后端核心职责：
 
-后端基于 Hono 实现，主要流程如下：
+- 接收 OpenAI / Anthropic 风格请求。
+- 判断 provider，转发到对应上游。
+- 捕获 request headers、request body、response body、流式 chunk、Token、耗时和错误。
+- 向前端提供 `/api/logs` 等查询接口。
+- 生产模式托管 `webui/dist`。
 
-1. **路由匹配**: 匹配所有指向 API 的请求。
-2. **中间件拦截**:
-    - 解析请求体。
-    - 提取 API Key（如果需要记录或透传）。
-    - 将信息异步写入 SQLite。
-3. **请求转发**:
-    - 使用 `fetch` 或专用库将请求发送至 `api.openai.com` 或 `api.anthropic.com`。
-4. **响应处理**:
-    - 接收流式 (Stream) 或普通响应。
-    - 如果是流式，需要特殊处理以捕获完整内容（例如：通过中间件克隆流或读取流后再转发）。
-    - 返回给客户端。
+日志主表是 `logs`。关键字段包括：
 
-### 3. 静态资源托管
+- `provider`: `openai`、`anthropic`、`openai-responses` 等。
+- `endpoint` / `method`: 原始请求路径和方法。
+- `request_headers` / `request_body`: 原始请求信息，JSON 字符串。
+- `response_body`: 流式响应 chunk 数组，JSON 字符串。
+- `response_body_finish`: 最终响应内容，非流式时为原始响应，流式时为拼接结果或完成事件。
+- `input_tokens` / `output_tokens`: Token 统计。
+- `is_streaming`: 是否为流式响应。
+- `error`: 捕获到的错误文本。
 
-前端构建后的 `dist` 目录将被后端通过 `hono/serve-static` 进行托管：
+## 策略设计
 
-- `GET /` -> 返回 `index.html`
-- `GET /assets/*` -> 返回前端静态资源
-- `GET /api/logs` -> 获取本地存储的拦截记录
+不同 API 风格的差异要收敛在策略层，业务流程和 UI 组件不要散落 provider 分支。
 
-## 使用说明
+后端策略位于 `backend/src/lib/strategies/`：
 
-### 包管理器
+- `openai.ts`
+- `openai-responses.ts`
+- `anthropic.ts`
+- `index.ts`
+- `types.ts`
 
-本项目使用 **pnpm** 作为包管理器，采用 monorepo 结构管理前后端。
+新增后端 provider 时，优先新增一个 strategy，实现：
 
-### 环境变量
+- provider 标识
+- 请求头和请求体准备
+- SDK 或 fetch 转发
+- Token 提取
+- 流式响应汇总
 
-在 `backend` 目录下创建 `.env` 文件：
+公共代理流程只通过 `getRelayStrategy(provider)` 获取策略。
+
+前端解析策略位于 `webui/src/lib/log-parsing/`：
+
+- `adapters/openai-chat.ts`
+- `adapters/openai-responses.ts`
+- `adapters/anthropic.ts`
+- `adapters/fallback.ts`
+- `index.ts`
+- `types.ts`
+
+前端组件只消费 `parseLog(log)` 返回的归一化结构。新增 API 风格时，优先新增 adapter，输出统一的 messages、system prompt、tools、params、response items 和 summary。
+
+`LogDetail`、`LogTable`、`ComparePage` 这类展示组件不要直接解析 provider 私有字段。确实需要新字段时，先加到 `ParsedLog`，再由 adapter 填充。
+
+## 前端约定
+
+- UI 组件使用 shadcn/ui，按需安装：`pnpm dlx shadcn@latest add <component-name>`。
+- 日志展示组件保持展示职责，解析逻辑放到 `webui/src/lib/log-parsing/`。
+- JSON 展示使用项目已有 `JsonViewer`。
+- Markdown 文本展示使用项目已有 `MarkdownViewer`。
+- 表格、详情、对比页共享同一套解析结果，避免重复写 OpenAI / Anthropic 字段判断。
+
+## 环境变量
+
+在 `backend/.env` 配置：
 
 ```env
 PORT=3000
 DATABASE_URL=./proxy.db
 
-# 目标 AI 接口配置（可自定义，不限于官方接口）
 OPENAI_BASE_URL=https://api.openai.com
 ANTHROPIC_BASE_URL=https://api.anthropic.com
 
-# 如果需要自动填入 Key，可以在此配置，或者由客户端请求头带入
+# 可选，也可以由客户端请求头透传
 # OPENAI_API_KEY=sk-xxx
 # ANTHROPIC_API_KEY=sk-ant-xxx
 ```
 
-**目标接口说明**：
-- `OPENAI_BASE_URL`: OpenAI 兼容接口的基础 URL，可配置为第三方代理或自建服务
-- `ANTHROPIC_BASE_URL`: Anthropic 兼容接口的基础 URL，可配置为第三方代理或自建服务
+`OPENAI_BASE_URL` 和 `ANTHROPIC_BASE_URL` 可以指向官方接口、第三方兼容代理或自建服务。
 
-### 启动步骤 (推荐)
+## 开发重点
 
-项目根目录已配置好集成脚本，可直接通过 `pnpm` 运行。
+查看捕获日志时，重点关注：
 
-1. **一键构建并启动 (生产模式)**:
-   ```bash
-   pnpm start
-   ```
-   该命令会自动：构建前端 (webui) -> 编译后端 (backend) -> 启动后端服务并托管前端。
+- System Prompt: 角色、规则、边界条件。
+- Few-shot: 示例如何约束输出。
+- Tool Use: tool schema、调用参数、tool result 的组织方式。
+- 多轮上下文: 历史消息如何影响当前输出。
+- 流式响应: chunk 与最终结果是否一致。
 
-2. **仅构建前端**:
-   ```bash
-   pnpm build:webui
-   ```
+## 改动守则
 
-3. **开发模式 (前后端分离启动)**:
-   - 启动后端 API: `pnpm dev:backend`
-   - 启动前端 Vite: `pnpm dev:webui`
-
-4. **客户端配置**:
-   将你的 AI SDK Base URL 指向 `http://localhost:3000`。
-
-## 学习重点
-
-通过查看捕获的日志，重点分析：
-- **System Prompt**: 观察不同复杂任务下，Agent 是如何定义角色和规则的。
-- **Few-Shot**: 学习如何通过示例引导模型。
-- **Chain of Thought**: 分析 Agent 如何引导模型进行推理。
-- **Tool Use**: 观察 Function Calling 的提示词结构和参数定义。
+- 涉及 provider 差异时，优先改 strategy / adapter。
+- 涉及展示样式时，尽量保持解析层接口稳定。
+- 涉及数据库字段时，同步检查后端写入、API 返回、前端类型。
+- 提交前至少运行相关构建或 lint。
