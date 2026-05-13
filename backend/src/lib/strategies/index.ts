@@ -4,10 +4,14 @@ import { openaiStrategy } from "./openai.js";
 import { openaiResponsesStrategy } from "./openai-responses.js";
 import type { RelayStrategy } from "./types.js";
 
+const strategies: Record<Provider, RelayStrategy> = {
+  openai: openaiStrategy,
+  anthropic: anthropicStrategy,
+  "openai-responses": openaiResponsesStrategy,
+};
+
 export function getRelayStrategy(provider: Provider): RelayStrategy {
-  if (provider === "anthropic") return anthropicStrategy;
-  if (provider === "openai-responses") return openaiResponsesStrategy;
-  return openaiStrategy;
+  return strategies[provider];
 }
 
 export type { PreparedRelayRequest, RelayRequest, RelayStrategy } from "./types.js";

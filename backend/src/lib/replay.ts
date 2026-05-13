@@ -3,6 +3,7 @@ import { getLogById, type LogRow } from "../db/index.js";
 import {
   collectSseChunks,
   inspectRequestBody,
+  isProvider,
   type Provider,
 } from "./proxy.js";
 import { sanitizeHeaders } from "./http.js";
@@ -94,7 +95,11 @@ export async function replayLogById(
 
   const method = selectMethod(original, overrides);
   const requestBody = selectRequestBody(original, overrides);
-  const provider = original.provider as Provider;
+  if (!isProvider(original.provider)) {
+    throw new ReplayError(`Unsupported provider: ${original.provider}`, 400);
+  }
+
+  const provider: Provider = original.provider;
   const requestUrl = buildReplayRequestUrl(endpoint);
   const requestHeaders = sanitizeHeaders(parseHeaders(original.request_headers));
   const strategy = getRelayStrategy(provider);
