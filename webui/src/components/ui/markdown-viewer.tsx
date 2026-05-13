@@ -1,6 +1,6 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Copy, Check } from "@phosphor-icons/react";
 
 interface MarkdownViewerProps {
@@ -8,8 +8,119 @@ interface MarkdownViewerProps {
   className?: string;
 }
 
+const HTML_TAGS = new Set([
+  "a",
+  "abbr",
+  "blockquote",
+  "br",
+  "code",
+  "dd",
+  "del",
+  "details",
+  "div",
+  "dl",
+  "dt",
+  "em",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "hr",
+  "img",
+  "ins",
+  "kbd",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "q",
+  "s",
+  "span",
+  "strong",
+  "sub",
+  "summary",
+  "sup",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+  "ul",
+]);
+
+function isCustomXmlTag(tagName: string): boolean {
+  return !HTML_TAGS.has(tagName.toLowerCase());
+}
+
+function fenceFor(block: string): string {
+  const longestFence = block
+    .match(/`{3,}/g)
+    ?.reduce((longest, fence) => Math.max(longest, fence.length), 2) ?? 2;
+
+  return "`".repeat(longestFence + 1);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function protectCustomXmlBlocks(content: string): string {
+  const lines = content.split("\n");
+  const output: string[] = [];
+  const openingTagPattern = /^\s*<([A-Za-z][\w:.-]*)(?:\s[^>]*)?>\s*$/;
+  const fencePattern = /^\s*(```|~~~)/;
+  let inMarkdownFence = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+
+    if (fencePattern.test(line)) {
+      inMarkdownFence = !inMarkdownFence;
+      output.push(line);
+      continue;
+    }
+
+    if (inMarkdownFence) {
+      output.push(line);
+      continue;
+    }
+
+    const openingMatch = line.match(openingTagPattern);
+    const tagName = openingMatch?.[1];
+    if (
+      !tagName ||
+      !isCustomXmlTag(tagName) ||
+      line.trim().endsWith("/>") ||
+      line.includes(`</${tagName}>`)
+    ) {
+      output.push(line);
+      continue;
+    }
+
+    const block = [line];
+    const closingTagPattern = new RegExp(`^\\s*</${escapeRegExp(tagName)}>\\s*$`);
+
+    while (index + 1 < lines.length) {
+      index += 1;
+      block.push(lines[index]);
+      if (closingTagPattern.test(lines[index])) break;
+    }
+
+    const rawBlock = block.join("\n");
+    const fence = fenceFor(rawBlock);
+    output.push(`${fence}xml`, rawBlock, fence);
+  }
+
+  return output.join("\n");
+}
+
 export function MarkdownViewer({ content, className }: MarkdownViewerProps) {
   const [copied, setCopied] = useState(false);
+  const renderContent = useMemo(() => protectCustomXmlBlocks(content), [content]);
 
   const handleCopy = async () => {
     try {
@@ -32,7 +143,7 @@ export function MarkdownViewer({ content, className }: MarkdownViewerProps) {
       </button>
       <Markdown
         remarkPlugins={[remarkGfm]}
-        children={content}
+        children={renderContent}
         components={{
           pre({ children }) {
             return (
