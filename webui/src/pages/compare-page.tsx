@@ -229,6 +229,7 @@ export function ComparePage({
     return [
       { label: "Provider", left: left.provider, right: right.provider },
       { label: "Endpoint", left: left.endpoint, right: right.endpoint },
+      { label: "Upstream URL", left: left.upstream_url || "--", right: right.upstream_url || "--" },
       { label: "Model", left: left.model || "--", right: right.model || "--" },
       { label: "Status", left: display(left.response_status), right: display(right.response_status) },
       { label: "Streaming", left: display(Boolean(left.is_streaming)), right: display(Boolean(right.is_streaming)) },

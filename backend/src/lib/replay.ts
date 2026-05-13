@@ -104,13 +104,28 @@ export async function replayLogById(
   const relayRequest = strategy.prepareRelayRequest(bodyInspection, parseHeaders(original.request_headers));
   const isStreaming = bodyInspection.json ? bodyInspection.json.stream === true : original.is_streaming === 1;
   const model = relayRequest.model ?? original.model;
+  const relayInput = {
+    path: `${requestUrl.pathname}${requestUrl.search}`,
+    method,
+    headers: relayRequest.headers,
+    body: isBodyMethod(method) && relayRequest.body !== null ? relayRequest.body : undefined,
+    signal,
+  };
+  let upstreamUrl: string | null = null;
 
   const requestId = crypto.randomUUID();
+
+  try {
+    upstreamUrl = await strategy.getRelayUrl(relayInput);
+  } catch {
+    upstreamUrl = null;
+  }
 
   proxyEventBus.emit("proxy:request", {
     requestId,
     provider,
     endpoint,
+    upstreamUrl,
     method,
     headers: requestHeaders,
     body: requestBody,
@@ -124,13 +139,10 @@ export async function replayLogById(
   const replayedLogId = getLogIdForRequest(requestId);
 
   try {
-    const response = await strategy.sendRelayRequest({
-      path: `${requestUrl.pathname}${requestUrl.search}`,
-      method,
-      headers: relayRequest.headers,
-      body: isBodyMethod(method) && relayRequest.body !== null ? relayRequest.body : undefined,
-      signal,
-    });
+    const { response, targetUrl } = await strategy.sendRelayRequest(relayInput);
+    if (!upstreamUrl) {
+      upstreamUrl = targetUrl;
+    }
 
     if (isStreaming && response.body) {
       const chunks = await collectSseChunks(response.body);

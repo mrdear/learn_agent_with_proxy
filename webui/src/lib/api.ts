@@ -2,6 +2,7 @@ export interface LogEntry {
   id: number;
   provider: string;
   endpoint: string;
+  upstream_url: string | null;
   method: string;
   request_headers: string | null;
   request_body: string | null;

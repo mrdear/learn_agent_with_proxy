@@ -24,7 +24,7 @@ http://localhost:3000/v1
 
 ## 环境变量
 
-在 `backend/.env` 配置：
+后端启动时会读取 `backend/.env`，同名变量以这个文件为准：
 
 ```env
 PORT=3000
@@ -39,6 +39,8 @@ ANTHROPIC_BASE_URL=https://api.anthropic.com
 ```
 
 `OPENAI_BASE_URL` 和 `ANTHROPIC_BASE_URL` 可以指向官方接口、第三方兼容代理或自建服务。上游地址可带版本路径，比如 `https://api.openai.com/v1` 或 `https://openrouter.ai/api/v1`。
+
+每条代理日志会记录 `upstream_url`，用于核对实际转发地址和当前环境变量是否一致。
 
 ## 前端 UI
 

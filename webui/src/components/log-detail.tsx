@@ -382,6 +382,12 @@ export function LogDetail({
             </Badge>
           </div>
         </div>
+        <div className="col-span-2 lg:col-span-4">
+          <span className="text-xs text-muted-foreground">Upstream URL</span>
+          <div className="break-all font-mono text-xs">
+            {log.upstream_url || "--"}
+          </div>
+        </div>
       </div>
 
       {log.error && (
@@ -491,6 +497,7 @@ export function LogDetail({
         </TabsContent>
 
         <TabsContent value="raw" className="mt-4 space-y-4">
+          <JsonBlock label="Relay Target" data={JSON.stringify({ upstream_url: log.upstream_url }, null, 2)} />
           <JsonBlock label="Request Headers" data={log.request_headers} />
           <JsonBlock label="Request Body" data={log.request_body} />
           <JsonBlock label="Response Body (Full)" data={log.response_body_finish} />

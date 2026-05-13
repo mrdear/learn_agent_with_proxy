@@ -4,6 +4,7 @@ export type ProxyRequestEvent = {
   requestId: string;
   provider: Provider;
   endpoint: string;
+  upstreamUrl: string | null;
   method: string;
   headers: Record<string, string>;
   body: string | null;

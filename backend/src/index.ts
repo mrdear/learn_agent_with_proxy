@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./env.js";
 
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
