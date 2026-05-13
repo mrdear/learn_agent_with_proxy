@@ -10,6 +10,11 @@ export type RelayRequest = {
   signal?: AbortSignal;
 };
 
+export type RelayResponse = {
+  response: Response;
+  targetUrl: string;
+};
+
 export type PreparedRelayRequest = {
   headers: Record<string, string>;
   body: unknown;
@@ -22,7 +27,8 @@ export interface RelayStrategy {
     requestBody: RequestBodyInspection,
     requestHeaders: Headers
   ): PreparedRelayRequest;
-  sendRelayRequest(request: RelayRequest): Promise<Response>;
+  getRelayUrl(request: RelayRequest): Promise<string>;
+  sendRelayRequest(request: RelayRequest): Promise<RelayResponse>;
   extractTokens(data: Record<string, unknown>): Tokens;
   summarizeStream(chunks: unknown[]): StreamSummary;
 }

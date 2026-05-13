@@ -1,6 +1,6 @@
 import { sanitizeHeaders } from "../http.js";
 import { type RequestBodyInspection } from "../proxy.js";
-import type { RelayMethod, RelayRequest } from "./types.js";
+import type { RelayMethod, RelayRequest, RelayResponse } from "./types.js";
 
 export const OPENAI_BASE_URL =
   process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com";
@@ -112,7 +112,7 @@ export function normalizeRelayPath(baseUrl: string, requestPath: string): string
   return search ? `${normalizedPath}?${search}` : normalizedPath;
 }
 
-export async function sendSdkRequest(client: {
+type SdkClient = {
   buildRequest: (
     input: {
       method: RelayMethod;
@@ -123,8 +123,14 @@ export async function sendSdkRequest(client: {
     },
     options?: { retryCount?: number }
   ) => Promise<{ req: RequestInit; url: string; timeout: number }>;
-}, request: RelayRequest, baseUrl: string): Promise<Response> {
-  const { req, url } = await client.buildRequest(
+};
+
+async function buildSdkRequest(
+  client: SdkClient,
+  request: RelayRequest,
+  baseUrl: string
+): Promise<{ req: RequestInit; url: string }> {
+  return client.buildRequest(
     {
       method: normalizeMethod(request.method),
       path: normalizeRelayPath(baseUrl, request.path),
@@ -134,8 +140,28 @@ export async function sendSdkRequest(client: {
     },
     { retryCount: 0 }
   );
+}
 
-  return fetch(url, req);
+export async function getSdkTargetUrl(
+  client: SdkClient,
+  request: RelayRequest,
+  baseUrl: string
+): Promise<string> {
+  const { url } = await buildSdkRequest(client, request, baseUrl);
+  return url;
+}
+
+export async function sendSdkRequest(
+  client: SdkClient,
+  request: RelayRequest,
+  baseUrl: string
+): Promise<RelayResponse> {
+  const { req, url } = await buildSdkRequest(client, request, baseUrl);
+
+  return {
+    response: await fetch(url, req),
+    targetUrl: url,
+  };
 }
 
 export type { RequestBodyInspection } from "../proxy.js";

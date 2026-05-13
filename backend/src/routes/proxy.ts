@@ -69,11 +69,50 @@ proxy.all("/v1/*", async (c) => {
   }
 
   const relayRequest = strategy.prepareRelayRequest(bodyInspection, rawHeaders);
+  const relayInput = {
+    path: requestPath,
+    method,
+    headers: relayRequest.headers,
+    body: isBodyMethod(method) && relayRequest.body !== null ? relayRequest.body : undefined,
+    signal: c.req.raw.signal,
+  };
+  let upstreamUrl: string | null = null;
+
+  try {
+    upstreamUrl = await strategy.getRelayUrl(relayInput);
+    console.log(`[PROXY] upstream ${upstreamUrl}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    proxyEventBus.emit("proxy:request", {
+      requestId,
+      provider,
+      endpoint: requestPath,
+      upstreamUrl: null,
+      method,
+      headers: logHeaders,
+      body: requestBody,
+      model: relayRequest.model ?? bodyInspection.model,
+      isStreaming: bodyInspection.isStreaming,
+      requestTime,
+    });
+
+    proxyEventBus.emit("proxy:error", {
+      requestId,
+      status: 502,
+      error: message,
+      responseTime: new Date().toISOString(),
+      durationMs: Date.now() - startTime,
+    });
+
+    return c.json({ error: "Proxy error", message }, 502);
+  }
 
   proxyEventBus.emit("proxy:request", {
     requestId,
     provider,
     endpoint: requestPath,
+    upstreamUrl,
     method,
     headers: logHeaders,
     body: requestBody,
@@ -83,13 +122,7 @@ proxy.all("/v1/*", async (c) => {
   });
 
   try {
-    const response = await strategy.sendRelayRequest({
-      path: requestPath,
-      method,
-      headers: relayRequest.headers,
-      body: isBodyMethod(method) && relayRequest.body !== null ? relayRequest.body : undefined,
-      signal: c.req.raw.signal,
-    });
+    const { response } = await strategy.sendRelayRequest(relayInput);
 
     if (bodyInspection.isStreaming && response.body) {
       const [clientBody, logBody] = response.body.tee();

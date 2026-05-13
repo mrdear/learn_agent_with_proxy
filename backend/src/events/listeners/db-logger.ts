@@ -13,6 +13,7 @@ function onProxyRequest(event: ProxyRequestEvent): void {
     const logId = createLog({
       provider: event.provider,
       endpoint: event.endpoint,
+      upstream_url: event.upstreamUrl,
       method: event.method,
       request_headers: JSON.stringify(event.headers),
       request_body: event.body,

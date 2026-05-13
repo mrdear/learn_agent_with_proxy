@@ -8,6 +8,7 @@ import {
 import {
   ANTHROPIC_API_KEY,
   ANTHROPIC_BASE_URL,
+  getSdkTargetUrl,
   prepareRelayBody,
   sendSdkRequest,
 } from "./shared.js";
@@ -28,6 +29,9 @@ export const anthropicStrategy: RelayStrategy = {
       body: prepared.body,
       model: prepared.model,
     };
+  },
+  getRelayUrl(request: RelayRequest) {
+    return getSdkTargetUrl(anthropicClient, request, ANTHROPIC_BASE_URL);
   },
   sendRelayRequest(request: RelayRequest) {
     return sendSdkRequest(anthropicClient, request, ANTHROPIC_BASE_URL);

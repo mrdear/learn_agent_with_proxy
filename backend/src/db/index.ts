@@ -16,6 +16,7 @@ db.exec(`
     -- 请求信息
     provider TEXT NOT NULL,
     endpoint TEXT NOT NULL,
+    upstream_url TEXT,
     method TEXT NOT NULL,
     request_headers TEXT,
     request_body TEXT,
@@ -58,11 +59,13 @@ ensureColumn("source_log_id", "ALTER TABLE logs ADD COLUMN source_log_id INTEGER
 ensureColumn("cache_read_tokens", "ALTER TABLE logs ADD COLUMN cache_read_tokens INTEGER");
 ensureColumn("cache_creation_tokens", "ALTER TABLE logs ADD COLUMN cache_creation_tokens INTEGER");
 ensureColumn("thinking_tokens", "ALTER TABLE logs ADD COLUMN thinking_tokens INTEGER");
+ensureColumn("upstream_url", "ALTER TABLE logs ADD COLUMN upstream_url TEXT");
 
 export interface LogRow {
   id: number;
   provider: string;
   endpoint: string;
+  upstream_url: string | null;
   method: string;
   request_headers: string | null;
   request_body: string | null;
@@ -85,8 +88,8 @@ export interface LogRow {
 }
 
 const insertLog = db.prepare(`
-  INSERT INTO logs (provider, endpoint, method, request_headers, request_body, model, is_streaming, source_log_id, request_time)
-  VALUES (@provider, @endpoint, @method, @request_headers, @request_body, @model, @is_streaming, @source_log_id, @request_time)
+  INSERT INTO logs (provider, endpoint, upstream_url, method, request_headers, request_body, model, is_streaming, source_log_id, request_time)
+  VALUES (@provider, @endpoint, @upstream_url, @method, @request_headers, @request_body, @model, @is_streaming, @source_log_id, @request_time)
 `);
 
 const updateLogResponse = db.prepare(`
@@ -108,6 +111,7 @@ const updateLogResponse = db.prepare(`
 export function createLog(data: {
   provider: string;
   endpoint: string;
+  upstream_url: string | null;
   method: string;
   request_headers: string | null;
   request_body: string | null;

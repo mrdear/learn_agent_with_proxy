@@ -8,6 +8,7 @@ import {
   OPENAI_API_KEY,
   OPENAI_BASE_URL,
   OPENAI_DEFAULT_MODEL,
+  getSdkTargetUrl,
   prepareOpenAIHeaders,
   prepareRelayBody,
   sendSdkRequest,
@@ -30,6 +31,9 @@ export const openaiStrategy: RelayStrategy = {
       body: prepared.body,
       model: prepared.model,
     };
+  },
+  getRelayUrl(request: RelayRequest) {
+    return getSdkTargetUrl(relayClient, request, OPENAI_BASE_URL);
   },
   sendRelayRequest(request: RelayRequest) {
     return sendSdkRequest(relayClient, request, OPENAI_BASE_URL);
