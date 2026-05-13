@@ -30,7 +30,7 @@ export const anthropicStrategy: RelayStrategy = {
     };
   },
   sendRelayRequest(request: RelayRequest) {
-    return sendSdkRequest(anthropicClient, request);
+    return sendSdkRequest(anthropicClient, request, ANTHROPIC_BASE_URL);
   },
   extractTokens(data) {
     return extractTokens("anthropic", data);

@@ -90,6 +90,28 @@ export function prepareRelayBody(
   };
 }
 
+export function normalizeRelayPath(baseUrl: string, requestPath: string): string {
+  const [pathname, search = ""] = requestPath.split("?", 2);
+  const basePath = new URL(baseUrl).pathname;
+  const baseSegments = basePath.split("/").filter(Boolean);
+  const requestSegments = pathname.split("/").filter(Boolean);
+
+  let overlap = 0;
+  const maxOverlap = Math.min(baseSegments.length, requestSegments.length);
+
+  for (let size = 1; size <= maxOverlap; size += 1) {
+    const baseTail = baseSegments.slice(baseSegments.length - size);
+    const requestHead = requestSegments.slice(0, size);
+
+    if (baseTail.every((segment, index) => segment === requestHead[index])) {
+      overlap = size;
+    }
+  }
+
+  const normalizedPath = `/${requestSegments.slice(overlap).join("/")}`;
+  return search ? `${normalizedPath}?${search}` : normalizedPath;
+}
+
 export async function sendSdkRequest(client: {
   buildRequest: (
     input: {
@@ -101,11 +123,11 @@ export async function sendSdkRequest(client: {
     },
     options?: { retryCount?: number }
   ) => Promise<{ req: RequestInit; url: string; timeout: number }>;
-}, request: RelayRequest): Promise<Response> {
+}, request: RelayRequest, baseUrl: string): Promise<Response> {
   const { req, url } = await client.buildRequest(
     {
       method: normalizeMethod(request.method),
-      path: request.path,
+      path: normalizeRelayPath(baseUrl, request.path),
       headers: request.headers,
       body: request.body ?? undefined,
       signal: request.signal,
