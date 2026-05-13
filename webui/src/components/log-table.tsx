@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { parseLog } from "@/lib/log-parsing";
 
 interface LogTableProps {
   logs: LogEntry[];
@@ -60,83 +61,6 @@ function formatDuration(ms: number | null): string {
 function formatTokens(input: number | null, output: number | null): string {
   if (input === null && output === null) return "--";
   return `${input ?? "?"}/${output ?? "?"}`;
-}
-
-function hasToolCalls(log: LogEntry): boolean {
-  const text = log.response_body_finish;
-  if (!text) return false;
-  try {
-    const data = JSON.parse(text) as Record<string, unknown>;
-    // OpenAI Chat Completions: choices[].message.tool_calls
-    const choices = data.choices as Array<Record<string, unknown>> | undefined;
-    if (choices?.some((c) => {
-      const msg = c.message as Record<string, unknown> | undefined;
-      return msg?.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
-    })) return true;
-    // Anthropic: content[] with type "tool_use"
-    const content = data.content as Array<Record<string, unknown>> | undefined;
-    if (content?.some((b) => b.type === "tool_use")) return true;
-    // OpenAI Responses API: output[] with type "function_call"
-    const output = data.output as Array<Record<string, unknown>> | undefined;
-    if (output?.some((item) => item.type === "function_call")) return true;
-  } catch {
-    // not JSON
-  }
-  return false;
-}
-
-function extractFirstUserMessage(log: LogEntry): string | null {
-  if (!log.request_body) return null;
-  try {
-    const body = JSON.parse(log.request_body) as Record<string, unknown>;
-
-    // OpenAI Chat Completions format: body.messages
-    const messages = body.messages as Array<{ role: string; content: unknown }> | undefined;
-    if (messages) {
-      const userMsg = messages.find((m) => m.role === "user");
-      if (!userMsg) return null;
-      if (typeof userMsg.content === "string") return userMsg.content;
-      if (Array.isArray(userMsg.content)) {
-        const textPart = (userMsg.content as Array<Record<string, unknown>>).find(
-          (p) => p.type === "text" && typeof p.text === "string"
-        );
-        return (textPart?.text as string) ?? null;
-      }
-      return null;
-    }
-
-    // OpenAI Responses API format: body.input array
-    const input = body.input as Array<Record<string, unknown>> | undefined;
-    if (input) {
-      // Handle both explicit type:"message" and direct role field formats
-      const userItem = input.find((item) =>
-        (item.type === "message" || !item.type) && item.role === "user"
-      );
-      if (!userItem) return null;
-      const content = userItem.content;
-      if (typeof content === "string") return content;
-      if (Array.isArray(content)) {
-        const textPart = content.find(
-          (p: Record<string, unknown>) => p.type === "input_text" && typeof p.text === "string"
-        );
-        return (textPart?.text as string) ?? null;
-      }
-      return null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function hasToolsDefined(log: LogEntry): boolean {
-  if (!log.request_body) return false;
-  try {
-    const body = JSON.parse(log.request_body) as Record<string, unknown>;
-    return Array.isArray(body.tools) && body.tools.length > 0;
-  } catch {
-    return false;
-  }
 }
 
 export function LogTable({
@@ -194,16 +118,18 @@ export function LogTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {logs.map((log) => (
-              <TableRow
-                key={log.id}
-                className={cn(
-                  "cursor-pointer hover:bg-muted/50",
-                  selectedIds.includes(log.id) && "bg-primary/5",
-                  viewedId === log.id && "ring-2 ring-inset ring-primary/40 bg-primary/10"
-                )}
-                onClick={() => onSelect(log)}
-              >
+            {logs.map((log) => {
+              const parsed = parseLog(log);
+              return (
+                <TableRow
+                  key={log.id}
+                  className={cn(
+                    "cursor-pointer hover:bg-muted/50",
+                    selectedIds.includes(log.id) && "bg-primary/5",
+                    viewedId === log.id && "ring-2 ring-inset ring-primary/40 bg-primary/10"
+                  )}
+                  onClick={() => onSelect(log)}
+                >
                 <TableCell onClick={(event) => event.stopPropagation()}>
                   <Checkbox
                     checked={selectedIds.includes(log.id)}
@@ -234,7 +160,7 @@ export function LogTable({
                 </TableCell>
                 <TableCell className="text-xs max-w-[300px]">
                   {(() => {
-                    const msg = extractFirstUserMessage(log);
+                    const msg = parsed.summary.firstUserMessage;
                     if (!msg) return <span className="text-muted-foreground">--</span>;
                     const truncated = msg.length > 80 ? msg.slice(0, 80) + "..." : msg;
                     return <span className="line-clamp-2 break-all" title={msg.slice(0, 200)}>{truncated}</span>;
@@ -251,9 +177,9 @@ export function LogTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  {hasToolCalls(log) ? (
+                  {parsed.summary.hasToolCalls ? (
                     <Badge variant="default" className="bg-purple-600 hover:bg-purple-700">Call</Badge>
-                  ) : hasToolsDefined(log) ? (
+                  ) : parsed.summary.hasToolsDefined ? (
                     <Badge variant="outline" className="text-purple-600 border-purple-300 dark:text-purple-400 dark:border-purple-700">Def</Badge>
                   ) : (
                     <span className="text-xs text-muted-foreground">--</span>
@@ -268,8 +194,9 @@ export function LogTable({
                 <TableCell className="text-xs text-muted-foreground">
                   {formatTime(log.request_time)}
                 </TableCell>
-              </TableRow>
-            ))}
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
