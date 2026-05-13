@@ -19,7 +19,7 @@ pnpm start
 客户端 SDK 的 Base URL 指向：
 
 ```txt
-http://localhost:3000
+http://localhost:3000/v1
 ```
 
 ## 环境变量
@@ -38,7 +38,7 @@ ANTHROPIC_BASE_URL=https://api.anthropic.com
 # ANTHROPIC_API_KEY=sk-ant-xxx
 ```
 
-`OPENAI_BASE_URL` 和 `ANTHROPIC_BASE_URL` 可以指向官方接口、第三方兼容代理或自建服务。
+`OPENAI_BASE_URL` 和 `ANTHROPIC_BASE_URL` 可以指向官方接口、第三方兼容代理或自建服务。上游地址可带版本路径，比如 `https://api.openai.com/v1` 或 `https://openrouter.ai/api/v1`。
 
 ## 前端 UI
 

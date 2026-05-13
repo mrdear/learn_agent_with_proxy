@@ -32,7 +32,7 @@ export const openaiResponsesStrategy: RelayStrategy = {
     };
   },
   sendRelayRequest(request: RelayRequest) {
-    return sendSdkRequest(relayClient, request);
+    return sendSdkRequest(relayClient, request, OPENAI_BASE_URL);
   },
   extractTokens(data) {
     return extractTokens("openai-responses", data);
