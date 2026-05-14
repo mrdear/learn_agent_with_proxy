@@ -18,6 +18,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { appRoutes, getRouteMeta, type RoutePath } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 import { SquaresFour, type Icon as PhosphorIcon } from "@phosphor-icons/react";
 
 interface AppShellProps {
@@ -154,8 +155,18 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
             </div>
           </header>
 
-          <div className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-            <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+          <div
+            className={cn(
+              "flex-1 px-4 py-6 sm:px-6",
+              pathname === "/logs" ? "lg:px-4 xl:px-6" : "lg:px-8"
+            )}
+          >
+            <div
+              className={cn(
+                "mx-auto flex w-full flex-col gap-6",
+                pathname === "/logs" ? "max-w-none" : "max-w-7xl"
+              )}
+            >
               {children}
             </div>
           </div>

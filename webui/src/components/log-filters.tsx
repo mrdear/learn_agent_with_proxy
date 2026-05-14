@@ -31,12 +31,12 @@ export function LogFilters({
   onRefresh,
 }: LogFiltersProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="grid shrink-0 grid-cols-1 gap-3 md:grid-cols-[160px_220px_minmax(280px,1fr)_auto]">
       <Select
         value={provider || "all"}
         onValueChange={(v) => onProviderChange(v === "all" ? "" : (v ?? ""))}
       >
-        <SelectTrigger className="w-[160px]">
+        <SelectTrigger className="w-full">
           <SelectValue placeholder="All Providers" />
         </SelectTrigger>
         <SelectContent>
@@ -50,7 +50,7 @@ export function LogFilters({
         value={model || "all"}
         onValueChange={(v) => onModelChange(v === "all" ? "" : (v ?? ""))}
       >
-        <SelectTrigger className="w-[200px]">
+        <SelectTrigger className="w-full">
           <SelectValue placeholder="All Models" />
         </SelectTrigger>
         <SelectContent>
@@ -67,11 +67,11 @@ export function LogFilters({
         placeholder="Search prompts, models..."
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
-        className="w-[280px]"
+        className="w-full"
       />
 
       <Button variant="default" size="icon" className="shadow-sm" onClick={onRefresh} title="Refresh">
-        <ArrowsClockwise className="h-4 w-4" />
+        <ArrowsClockwise data-icon="inline-start" />
       </Button>
     </div>
   );
