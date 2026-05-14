@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { replayLog } from "@/lib/api";
 import { toast } from "sonner";
 import { LogRelayPanel } from "@/components/log-relay-panel";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { CaretRight, MagnifyingGlass } from "@phosphor-icons/react";
 import { JsonViewer } from "@/components/ui/json-viewer";
 import { MarkdownViewer } from "@/components/ui/markdown-viewer";
 import {
@@ -122,14 +122,18 @@ function ToolCard({ tool, highlight }: { tool: ParsedTool; highlight: string }) 
   const descMatch = highlight && desc.toLowerCase().includes(highlight.toLowerCase());
 
   return (
-    <div className="rounded-md border border-border overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b border-border">
-        <span className={`font-mono text-sm font-semibold ${nameMatch ? "bg-yellow-200 dark:bg-yellow-800 px-1 rounded" : ""}`}>
-          {name}
-        </span>
-      </div>
+    <details className="group rounded-md border border-border overflow-hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-2 bg-muted/50 px-3 py-2 outline-none transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
+        <CaretRight className="shrink-0 transition-transform group-open:rotate-90" />
+        <div className="min-w-0 flex-1">
+          <span className={`font-mono text-sm font-semibold ${nameMatch ? "bg-yellow-200 dark:bg-yellow-800 px-1 rounded" : ""}`}>
+            {name}
+          </span>
+        </div>
+        <Badge variant="outline">Schema</Badge>
+      </summary>
       {desc && (
-        <div className="px-3 py-2 border-b border-border">
+        <div className="px-3 py-2 border-t border-border">
           <p className={`text-xs text-muted-foreground ${descMatch ? "bg-yellow-200/50 dark:bg-yellow-800/50" : ""}`}>
             {desc}
           </p>
@@ -144,7 +148,7 @@ function ToolCard({ tool, highlight }: { tool: ParsedTool; highlight: string }) 
           <JsonViewer data={tool.raw as object} />
         </div>
       )}
-    </div>
+    </details>
   );
 }
 
