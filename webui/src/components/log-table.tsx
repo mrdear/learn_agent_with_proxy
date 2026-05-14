@@ -35,8 +35,7 @@ const TABLE_COLUMN_COUNT = 12;
 
 interface LogGroup {
   key: string;
-  method: string;
-  endpoint: string;
+  provider: string;
   startTime: number;
   endTime: number;
   logs: LogEntry[];
@@ -112,10 +111,7 @@ function getDebugSessionGap(logs: LogEntry[]): number {
     const previousLog = logs[index - 1];
     const log = logs[index];
 
-    if (
-      previousLog.method !== log.method ||
-      previousLog.endpoint !== log.endpoint
-    ) {
+    if (previousLog.provider !== log.provider) {
       continue;
     }
 
@@ -148,8 +144,7 @@ function groupLogs(logs: LogEntry[]): LogGroup[] {
     const latestGroup = groups.at(-1);
     const canJoinLatestGroup =
       latestGroup &&
-      latestGroup.method === log.method &&
-      latestGroup.endpoint === log.endpoint &&
+      latestGroup.provider === log.provider &&
       Math.abs(latestGroup.endTime - requestTime) <= sessionGap;
 
     if (canJoinLatestGroup) {
@@ -160,9 +155,8 @@ function groupLogs(logs: LogEntry[]): LogGroup[] {
     }
 
     const group: LogGroup = {
-      key: `${log.method}:${log.endpoint}:${log.id}`,
-      method: log.method,
-      endpoint: log.endpoint,
+      key: `${log.provider}:${log.id}`,
+      provider: log.provider,
       startTime: requestTime,
       endTime: requestTime,
       logs: [log],
@@ -339,9 +333,7 @@ export function LogTable({
                 <TableRow className="bg-muted/60 hover:bg-muted/60">
                   <TableCell colSpan={TABLE_COLUMN_COUNT} className="py-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary" className="font-mono">
-                        {group.method} {group.endpoint}
-                      </Badge>
+                      <ProviderBadge provider={group.provider} />
                       <span className="font-mono text-xs text-muted-foreground">
                         {formatGroupTimeRange(group.startTime, group.endTime)}
                       </span>
