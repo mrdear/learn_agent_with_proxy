@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+import { useTheme } from "next-themes";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
@@ -19,7 +21,12 @@ import {
 } from "@/components/ui/sidebar";
 import { appRoutes, getRouteMeta, type RoutePath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
-import { SquaresFour, type Icon as PhosphorIcon } from "@phosphor-icons/react";
+import {
+  Moon,
+  SquaresFour,
+  Sun,
+  type Icon as PhosphorIcon,
+} from "@phosphor-icons/react";
 
 interface AppShellProps {
   pathname: RoutePath;
@@ -50,6 +57,27 @@ function RouteButton({
         <span className="group-data-[collapsible=icon]:hidden">{label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
+  );
+}
+
+function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  const nextTheme = isDark ? "light" : "dark";
+  const label = isDark ? "Switch to light mode" : "Switch to dark mode";
+  const ThemeIcon = isDark ? Sun : Moon;
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      title={label}
+      aria-label={label}
+      onClick={() => setTheme(nextTheme)}
+    >
+      <ThemeIcon data-icon="inline-start" />
+    </Button>
   );
 }
 
@@ -146,12 +174,15 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
                 </div>
               </div>
 
-              <Badge
-                variant="outline"
-                className="hidden font-mono text-[11px] md:inline-flex"
-              >
-                http://localhost:3000
-              </Badge>
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="hidden font-mono text-[11px] md:inline-flex"
+                >
+                  http://localhost:3000
+                </Badge>
+                <ThemeToggle />
+              </div>
             </div>
           </header>
 
