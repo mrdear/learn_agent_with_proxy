@@ -101,10 +101,10 @@ export function LogsPage({
   }, []);
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader className="border-b border-border/70">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+    <div className="flex min-h-[calc(100svh-7rem)] flex-col gap-4">
+      <Card className="flex flex-1 flex-col overflow-hidden">
+        <CardHeader className="shrink-0 border-b border-border/70">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="flex flex-col gap-1">
               <Badge variant="default" className="w-fit shadow-sm">
                 Captured traffic
@@ -114,33 +114,35 @@ export function LogsPage({
                 Inspect prompts, parameters, token counts, and streamed response chunks.
               </CardDescription>
             </div>
-            <Badge variant="default" className="w-fit shadow-sm">
-              {total} records
-            </Badge>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={async () => {
-                if (!confirm("确认清除所有日志？此操作不可恢复。")) return;
-                try {
-                  const { deleted } = await clearAllLogs();
-                  toast.success(`已清除 ${deleted} 条日志`);
-                  setSelectedIds([]);
-                  setViewedId(null);
-                  setSelectedLog(null);
-                  void loadLogs();
-                } catch {
-                  toast.error("清除失败");
-                }
-              }}
-            >
-              Clear all
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="default" className="w-fit shadow-sm">
+                {total} records
+              </Badge>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  if (!confirm("确认清除所有日志？此操作不可恢复。")) return;
+                  try {
+                    const { deleted } = await clearAllLogs();
+                    toast.success(`已清除 ${deleted} 条日志`);
+                    setSelectedIds([]);
+                    setViewedId(null);
+                    setSelectedLog(null);
+                    void loadLogs();
+                  } catch {
+                    toast.error("清除失败");
+                  }
+                }}
+              >
+                Clear all
+              </Button>
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4 pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-primary/15 bg-primary/5 px-3 py-2">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-4 pt-4">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-none border border-primary/15 bg-primary/5 px-3 py-2">
             <div className="flex flex-col gap-1">
               <Badge
                 variant={compareEnabled ? "default" : "secondary"}
@@ -188,20 +190,22 @@ export function LogsPage({
             onRefresh={loadLogs}
           />
 
-          <LogTable
-            logs={logs}
-            loading={loading}
-            page={page}
-            totalPages={totalPages}
-            selectedIds={selectedIds}
-            onPageChange={setPage}
-            onToggleSelect={handleToggleSelect}
-            viewedId={viewedId}
-            onSelect={(log) => {
-              setSelectedLog(log);
-              setViewedId(log.id);
-            }}
-          />
+          <div className="min-h-0 flex-1">
+            <LogTable
+              logs={logs}
+              loading={loading}
+              page={page}
+              totalPages={totalPages}
+              selectedIds={selectedIds}
+              onPageChange={setPage}
+              onToggleSelect={handleToggleSelect}
+              viewedId={viewedId}
+              onSelect={(log) => {
+                setSelectedLog(log);
+                setViewedId(log.id);
+              }}
+            />
+          </div>
         </CardContent>
       </Card>
 
