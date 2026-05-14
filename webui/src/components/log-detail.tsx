@@ -27,29 +27,15 @@ interface LogDetailProps {
 }
 
 function getToolName(tool: ParsedTool): string {
-  // OpenAI Chat Completions format: tool.function.name
-  if (tool.function?.name) return tool.function.name;
-  // OpenAI Responses API / Anthropic format: tool.name
-  if (tool.name) return tool.name;
-  return "(unknown)";
+  return tool.name;
 }
 
 function getToolDescription(tool: ParsedTool): string {
-  // OpenAI Chat Completions format
-  if (tool.function?.description) return tool.function.description;
-  // OpenAI Responses API / Anthropic format
-  if (tool.description) return tool.description;
-  return "";
+  return tool.description;
 }
 
 function getToolSchema(tool: ParsedTool): unknown {
-  // OpenAI Chat Completions format
-  if (tool.function?.parameters) return tool.function.parameters;
-  // OpenAI Responses API format (flat parameters)
-  if (tool.parameters) return tool.parameters;
-  // Anthropic format
-  if (tool.input_schema) return tool.input_schema;
-  return null;
+  return tool.schema;
 }
 
 // ── Sub-components ──
@@ -154,9 +140,8 @@ function ToolCard({ tool, highlight }: { tool: ParsedTool; highlight: string }) 
           <JsonViewer data={schema} />
         </div>
       ) : (
-        // If no schema extracted, show the full tool object as JSON
         <div className="p-3">
-          <JsonViewer data={tool as object} />
+          <JsonViewer data={tool.raw as object} />
         </div>
       )}
     </div>

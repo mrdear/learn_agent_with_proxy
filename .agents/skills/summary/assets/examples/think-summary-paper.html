@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Think 与 Summary 的纸面接力</title>
+<meta name="author" content="Codex">
+<meta name="description" content="记录 think 与 summary 两个 skill 的职责边界、交接条件、依赖和验证方式。">
+<meta name="keywords" content="think, summary, skill, one paper, diagram">
+<meta name="generator" content="Summary">
+<style>
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("../fonts/TsangerJinKai02-W04.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("../fonts/TsangerJinKai02-W05.ttf") format("truetype");
+    font-weight: 500;
+    font-style: normal;
+  }
+  @page { size: A4; margin: 15mm 18mm; background: #f5f4ed; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --parchment: #f5f4ed;
+    --ivory: #faf9f5;
+    --near-black: #141413;
+    --dark-warm: #3d3d3a;
+    --olive: #504e49;
+    --stone: #6b6a64;
+    --brand: #1B365D;
+    --border: #e8e6dc;
+    --tag-bg: #E4ECF5;
+    --serif: "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", Georgia, serif;
+  }
+  html, body { background: var(--parchment); }
+  @media screen { body { max-width: 210mm; margin: 0 auto; padding: 15mm 18mm; } }
+  body {
+    color: var(--near-black);
+    font-family: var(--serif);
+    font-size: 9.8pt;
+    line-height: 1.43;
+    letter-spacing: 0.18pt;
+  }
+  .header {
+    border-left: 2.5pt solid var(--brand);
+    border-radius: 1.5pt;
+    padding-left: 8pt;
+    margin-bottom: 11pt;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 18pt;
+  }
+  .eyebrow {
+    color: var(--brand);
+    font-size: 8.8pt;
+    letter-spacing: 0.8pt;
+    margin-bottom: 3pt;
+  }
+  h1 {
+    font-size: 23pt;
+    font-weight: 500;
+    line-height: 1.12;
+    margin-bottom: 4pt;
+  }
+  .subtitle {
+    color: var(--olive);
+    font-size: 10.6pt;
+    line-height: 1.35;
+  }
+  .meta {
+    color: var(--stone);
+    font-size: 8.7pt;
+    line-height: 1.42;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .metrics {
+    display: flex;
+    gap: 12pt;
+    margin-bottom: 12pt;
+    padding: 3pt 0 6pt;
+    border-bottom: 0.3pt dotted var(--border);
+  }
+  .metric {
+    flex: 1;
+    display: flex;
+    gap: 4pt;
+    align-items: baseline;
+  }
+  .metric-value {
+    color: var(--brand);
+    font-size: 18.5pt;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .metric-label {
+    color: var(--olive);
+    font-size: 8.8pt;
+    line-height: 1.25;
+  }
+  .lead {
+    color: var(--dark-warm);
+    font-size: 11.4pt;
+    line-height: 1.46;
+    margin-bottom: 10pt;
+  }
+  .hl { color: var(--brand); font-weight: 500; }
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16pt;
+    margin-bottom: 10pt;
+  }
+  section { break-inside: avoid; }
+  h2 {
+    font-size: 14.5pt;
+    font-weight: 500;
+    line-height: 1.2;
+    margin-bottom: 5pt;
+  }
+  p { margin-bottom: 5pt; }
+  ul.dash { list-style: none; }
+  ul.dash li {
+    position: relative;
+    padding-left: 13pt;
+    margin-bottom: 3pt;
+  }
+  ul.dash li::before {
+    content: "\2013";
+    position: absolute;
+    left: 0;
+    color: var(--brand);
+  }
+  figure {
+    margin: 4pt 0 9pt;
+    break-inside: avoid;
+  }
+  svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  figcaption {
+    color: var(--olive);
+    font-size: 8.6pt;
+    line-height: 1.35;
+    margin-top: 3pt;
+  }
+  .callout {
+    border-left: 1.8pt solid var(--brand);
+    padding: 3pt 0 3pt 11pt;
+    color: var(--olive);
+    font-size: 9.6pt;
+    line-height: 1.42;
+    margin-top: 5pt;
+  }
+  .footer {
+    margin-top: 9pt;
+    padding-top: 5pt;
+    border-top: 0.3pt dotted var(--border);
+    color: var(--stone);
+    font-size: 8.5pt;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="eyebrow">决策纸面稿</div>
+      <h1>Think 与 Summary 的纸面接力</h1>
+      <div class="subtitle">隐藏决策：把探索和沉淀拆成两个 skill，让想法先被判断，再被保存。</div>
+    </div>
+    <div class="meta">
+      Codex<br>
+      2026.05.05<br>
+      Draft
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="metric"><div class="metric-value">2</div><div class="metric-label">个 skill 分工</div></div>
+    <div class="metric"><div class="metric-value">1</div><div class="metric-label">张 A4 交付物</div></div>
+    <div class="metric"><div class="metric-value">14</div><div class="metric-label">个图表模板</div></div>
+    <div class="metric"><div class="metric-value">1页</div><div class="metric-label">PDF 硬约束</div></div>
+  </div>
+
+  <p class="lead">
+    当前设计应保留：<span class="hl">think 负责把不确定性变成判断，summary 负责把判断变成纸面记录</span>。两者之间的接口是“已经形成的结论”，不是原始脑暴。
+  </p>
+
+  <figure>
+    <svg viewBox="0 0 820 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="think to summary flow">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#504e49"/>
+        </marker>
+        <marker id="arrow-brand" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#1B365D"/>
+        </marker>
+      </defs>
+      <rect width="820" height="300" fill="#f5f4ed"/>
+      <line x1="200" y1="145" x2="325" y2="145" stroke="#504e49" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="495" y1="145" x2="620" y2="145" stroke="#1B365D" stroke-width="1.35" marker-end="url(#arrow-brand)"/>
+      <rect x="38" y="92" width="162" height="106" rx="7" fill="#faf9f5" stroke="#141413" stroke-width="1"/>
+      <text x="119" y="119" fill="#1B365D" font-size="12" font-weight="500" font-family="inherit" text-anchor="middle">think</text>
+      <text x="119" y="145" fill="#141413" font-size="13" font-weight="500" font-family="inherit" text-anchor="middle">探索与判断</text>
+      <text x="119" y="166" fill="#504e49" font-size="10" font-family="inherit" text-anchor="middle">idea / plan / evaluation</text>
+      <polygon points="410,83 495,136 495,154 410,207 325,154 325,136" fill="#EEF2F7" stroke="#1B365D" stroke-width="1.2"/>
+      <text x="410" y="138" fill="#141413" font-size="13" font-weight="500" font-family="inherit" text-anchor="middle">交接门槛</text>
+      <text x="410" y="159" fill="#1B365D" font-size="10" font-family="inherit" text-anchor="middle">已有推荐 / 风险 / 下一步</text>
+      <rect x="620" y="92" width="162" height="106" rx="7" fill="#faf9f5" stroke="#141413" stroke-width="1"/>
+      <text x="701" y="119" fill="#1B365D" font-size="12" font-weight="500" font-family="inherit" text-anchor="middle">summary</text>
+      <text x="701" y="145" fill="#141413" font-size="13" font-weight="500" font-family="inherit" text-anchor="middle">记录与交付</text>
+      <text x="701" y="166" fill="#504e49" font-size="10" font-family="inherit" text-anchor="middle">one paper + diagram</text>
+      <line x1="76" y1="236" x2="744" y2="236" stroke="#e8e6dc" stroke-width="1"/>
+      <text x="78" y="260" fill="#504e49" font-size="10" font-family="inherit">依赖：one-pager 模板、diagram 模板、WeasyPrint、pypdf、pango、字体文件</text>
+    </svg>
+    <figcaption>图表来自 flowchart 思路：只有 think 产出明确判断时，summary 才接手生成 paper。</figcaption>
+  </figure>
+
+  <div class="two-col">
+    <section>
+      <h2>职责边界</h2>
+      <p>think 的输出偏决策：读现场、给判断、列风险、等批准；summary 的输出偏交付：标题、指标、证据、风险、下一步。</p>
+      <ul class="dash">
+        <li>Idea Shaping 只给小步验证，不写设计总结。</li>
+        <li>Full Planning 产出 approved design summary 后停止。</li>
+        <li>Summary 不重开讨论，只压缩已有结论。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>依赖与风险</h2>
+      <p>这条链路的脆弱点在交接质量和渲染环境。前者靠门槛控制，后者靠脚本验证。</p>
+      <ul class="dash">
+        <li>输入仍发散时，退回 think 继续收束。</li>
+        <li>图表最多 1 张，避免把 paper 变成长报告。</li>
+        <li>PDF 依赖 WeasyPrint、pypdf、pango 与本地字体。</li>
+      </ul>
+    </section>
+  </div>
+
+  <div class="callout">
+    下一步：把这个 paper 作为两个 skill 的接口说明，后续只改交接门槛和验证命令，不扩回简历、PPT、长文档等旧范围。
+  </div>
+
+  <div class="footer">
+    <span>内部 · skill 管理工具</span>
+    <span>think/SKILL.md + summary/SKILL.md</span>
+  </div>
+</body>
+</html>

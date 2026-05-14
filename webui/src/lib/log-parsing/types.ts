@@ -13,12 +13,10 @@ export interface ParsedMessage {
 }
 
 export interface ParsedTool {
-  type?: string;
-  function?: { name?: string; description?: string; parameters?: unknown };
-  name?: string;
-  description?: string;
-  parameters?: unknown;
-  input_schema?: unknown;
+  name: string;
+  description: string;
+  schema: unknown | null;
+  raw: unknown;
 }
 
 export interface ParsedResponseItem {

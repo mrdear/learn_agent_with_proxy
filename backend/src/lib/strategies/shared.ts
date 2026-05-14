@@ -22,6 +22,10 @@ export function setHeader(headers: Record<string, string>, name: string, value: 
   headers[name] = value;
 }
 
+export function readNumber(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
 export function normalizeMethod(method: string): RelayMethod {
   const normalized = method.toLowerCase();
   if (
