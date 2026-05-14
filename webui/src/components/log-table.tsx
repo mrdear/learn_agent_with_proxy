@@ -28,14 +28,17 @@ interface LogTableProps {
   onSelect: (log: LogEntry) => void;
 }
 
-const GROUP_WINDOW_MS = 5 * 60 * 1000;
+const DEFAULT_DEBUG_SESSION_GAP_MS = 3 * 60 * 1000;
+const MIN_DEBUG_SESSION_GAP_MS = 45 * 1000;
+const MAX_DEBUG_SESSION_GAP_MS = 6 * 60 * 1000;
 const TABLE_COLUMN_COUNT = 12;
 
 interface LogGroup {
   key: string;
   method: string;
   endpoint: string;
-  bucketStart: number;
+  startTime: number;
+  endTime: number;
   logs: LogEntry[];
 }
 
@@ -75,14 +78,9 @@ function formatTokens(input: number | null, output: number | null): string {
   return `${input ?? "?"}/${output ?? "?"}`;
 }
 
-function getGroupBucketStart(iso: string): number {
-  const time = new Date(iso).getTime();
-  return Math.floor(time / GROUP_WINDOW_MS) * GROUP_WINDOW_MS;
-}
-
-function formatGroupTimeRange(bucketStart: number): string {
-  const start = new Date(bucketStart);
-  const end = new Date(bucketStart + GROUP_WINDOW_MS);
+function formatGroupTimeRange(startTime: number, endTime: number): string {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
   const date = start.toLocaleDateString("zh-CN", {
     month: "2-digit",
     day: "2-digit",
@@ -95,29 +93,81 @@ function formatGroupTimeRange(bucketStart: number): string {
   return `${date} ${timeFormat.format(start)}-${timeFormat.format(end)}`;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sortedValues = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sortedValues.length / 2);
+  if (sortedValues.length % 2 === 1) return sortedValues[middle];
+  return (sortedValues[middle - 1] + sortedValues[middle]) / 2;
+}
+
+function getDebugSessionGap(logs: LogEntry[]): number {
+  const nearbyGaps: number[] = [];
+
+  for (let index = 1; index < logs.length; index += 1) {
+    const previousLog = logs[index - 1];
+    const log = logs[index];
+
+    if (
+      previousLog.method !== log.method ||
+      previousLog.endpoint !== log.endpoint
+    ) {
+      continue;
+    }
+
+    const gap = Math.abs(
+      new Date(previousLog.request_time).getTime() -
+        new Date(log.request_time).getTime()
+    );
+
+    if (gap <= MAX_DEBUG_SESSION_GAP_MS) {
+      nearbyGaps.push(gap);
+    }
+  }
+
+  const typicalGap = median(nearbyGaps);
+  if (typicalGap === null) return DEFAULT_DEBUG_SESSION_GAP_MS;
+
+  return clamp(
+    typicalGap * 2.5,
+    MIN_DEBUG_SESSION_GAP_MS,
+    MAX_DEBUG_SESSION_GAP_MS
+  );
+}
+
 function groupLogs(logs: LogEntry[]): LogGroup[] {
   const groups: LogGroup[] = [];
-  const groupByKey = new Map<string, LogGroup>();
+  const sessionGap = getDebugSessionGap(logs);
 
   for (const log of logs) {
-    const bucketStart = getGroupBucketStart(log.request_time);
-    const key = `${log.method}:${log.endpoint}:${bucketStart}`;
-    const existingGroup = groupByKey.get(key);
+    const requestTime = new Date(log.request_time).getTime();
+    const latestGroup = groups.at(-1);
+    const canJoinLatestGroup =
+      latestGroup &&
+      latestGroup.method === log.method &&
+      latestGroup.endpoint === log.endpoint &&
+      Math.abs(latestGroup.endTime - requestTime) <= sessionGap;
 
-    if (existingGroup) {
-      existingGroup.logs.push(log);
+    if (canJoinLatestGroup) {
+      latestGroup.logs.push(log);
+      latestGroup.startTime = Math.min(latestGroup.startTime, requestTime);
+      latestGroup.endTime = Math.max(latestGroup.endTime, requestTime);
       continue;
     }
 
     const group: LogGroup = {
-      key,
+      key: `${log.method}:${log.endpoint}:${log.id}`,
       method: log.method,
       endpoint: log.endpoint,
-      bucketStart,
+      startTime: requestTime,
+      endTime: requestTime,
       logs: [log],
     };
     groups.push(group);
-    groupByKey.set(key, group);
   }
 
   return groups;
@@ -293,7 +343,7 @@ export function LogTable({
                         {group.method} {group.endpoint}
                       </Badge>
                       <span className="font-mono text-xs text-muted-foreground">
-                        {formatGroupTimeRange(group.bucketStart)}
+                        {formatGroupTimeRange(group.startTime, group.endTime)}
                       </span>
                       <Badge variant="outline">
                         {group.logs.length} requests

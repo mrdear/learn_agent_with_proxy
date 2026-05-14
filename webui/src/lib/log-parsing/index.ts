@@ -4,7 +4,7 @@ import { fallbackAdapter } from "./adapters/fallback";
 import { openAIChatAdapter } from "./adapters/openai-chat";
 import { openAIResponsesAdapter } from "./adapters/openai-responses";
 import type { AdapterInput, LogAdapter } from "./adapters/types";
-import { parseJson, parseJsonObject, textFromContentParts } from "./json";
+import { lastTextFromContentParts, parseJson, parseJsonObject } from "./json";
 import type { ParsedLog, ParsedMessage } from "./types";
 
 const adapters: LogAdapter[] = [
@@ -24,7 +24,7 @@ function getEffectiveResponseBody(log: LogEntry): string | null {
 function firstUserMessage(messages: ParsedMessage[]): string | null {
   const userMessage = messages.find((message) => message.role === "user");
   if (!userMessage) return null;
-  return textFromContentParts(userMessage.content);
+  return lastTextFromContentParts(userMessage.content);
 }
 
 export function parseLog(log: LogEntry): ParsedLog {

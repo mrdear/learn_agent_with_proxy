@@ -55,6 +55,23 @@ export function textFromContentParts(
   return text || null;
 }
 
+export function lastTextFromContentParts(
+  content: unknown,
+  preferredTypes: string[] = ["text", "input_text", "output_text"],
+): string | null {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+
+  const textParts = (content as Array<Record<string, unknown>>).filter((part) => {
+    if (typeof part.text !== "string") return false;
+    if (typeof part.type !== "string") return true;
+    return preferredTypes.includes(part.type);
+  });
+  const lastTextPart = textParts.at(-1);
+
+  return typeof lastTextPart?.text === "string" ? lastTextPart.text : null;
+}
+
 export function objectEntriesWithout(
   body: Record<string, unknown> | null,
   excludedKeys: string[],
