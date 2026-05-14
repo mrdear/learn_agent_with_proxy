@@ -28,9 +28,7 @@ interface LogTableProps {
   onSelect: (log: LogEntry) => void;
 }
 
-const DEFAULT_DEBUG_SESSION_GAP_MS = 3 * 60 * 1000;
-const MIN_DEBUG_SESSION_GAP_MS = 45 * 1000;
-const MAX_DEBUG_SESSION_GAP_MS = 6 * 60 * 1000;
+const DEBUG_SESSION_GAP_MS = 3 * 60 * 1000;
 const TABLE_COLUMN_COUNT = 12;
 
 interface LogGroup {
@@ -92,52 +90,8 @@ function formatGroupTimeRange(startTime: number, endTime: number): string {
   return `${date} ${timeFormat.format(start)}-${timeFormat.format(end)}`;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sortedValues = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sortedValues.length / 2);
-  if (sortedValues.length % 2 === 1) return sortedValues[middle];
-  return (sortedValues[middle - 1] + sortedValues[middle]) / 2;
-}
-
-function getDebugSessionGap(logs: LogEntry[]): number {
-  const nearbyGaps: number[] = [];
-
-  for (let index = 1; index < logs.length; index += 1) {
-    const previousLog = logs[index - 1];
-    const log = logs[index];
-
-    if (previousLog.provider !== log.provider) {
-      continue;
-    }
-
-    const gap = Math.abs(
-      new Date(previousLog.request_time).getTime() -
-        new Date(log.request_time).getTime()
-    );
-
-    if (gap <= MAX_DEBUG_SESSION_GAP_MS) {
-      nearbyGaps.push(gap);
-    }
-  }
-
-  const typicalGap = median(nearbyGaps);
-  if (typicalGap === null) return DEFAULT_DEBUG_SESSION_GAP_MS;
-
-  return clamp(
-    typicalGap * 2.5,
-    MIN_DEBUG_SESSION_GAP_MS,
-    MAX_DEBUG_SESSION_GAP_MS
-  );
-}
-
 function groupLogs(logs: LogEntry[]): LogGroup[] {
   const groups: LogGroup[] = [];
-  const sessionGap = getDebugSessionGap(logs);
 
   for (const log of logs) {
     const requestTime = new Date(log.request_time).getTime();
@@ -145,7 +99,7 @@ function groupLogs(logs: LogEntry[]): LogGroup[] {
     const canJoinLatestGroup =
       latestGroup &&
       latestGroup.provider === log.provider &&
-      Math.abs(latestGroup.endTime - requestTime) <= sessionGap;
+      Math.abs(latestGroup.endTime - requestTime) <= DEBUG_SESSION_GAP_MS;
 
     if (canJoinLatestGroup) {
       latestGroup.logs.push(log);
