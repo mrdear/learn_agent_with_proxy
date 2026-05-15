@@ -39,6 +39,38 @@ interface LogGroup {
   logs: LogEntry[];
 }
 
+const groupAccentClasses = [
+  {
+    row: "bg-chart-1/10 hover:bg-chart-1/10",
+    dot: "bg-chart-1 ring-chart-1/20",
+  },
+  {
+    row: "bg-chart-2/10 hover:bg-chart-2/10",
+    dot: "bg-chart-2 ring-chart-2/20",
+  },
+  {
+    row: "bg-chart-3/10 hover:bg-chart-3/10",
+    dot: "bg-chart-3 ring-chart-3/20",
+  },
+  {
+    row: "bg-chart-4/10 hover:bg-chart-4/10",
+    dot: "bg-chart-4 ring-chart-4/20",
+  },
+  {
+    row: "bg-chart-5/10 hover:bg-chart-5/10",
+    dot: "bg-chart-5 ring-chart-5/20",
+  },
+] as const;
+
+function getProviderAccent(provider: string) {
+  let hash = 0;
+  for (const character of provider) {
+    hash += character.charCodeAt(0);
+  }
+
+  return groupAccentClasses[hash % groupAccentClasses.length];
+}
+
 function ProviderBadge({ provider }: { provider: string }) {
   return (
     <Badge variant={provider === "openai" ? "default" : "secondary"}>
@@ -282,35 +314,45 @@ export function LogTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {groupedLogs.map((group) => (
-              <Fragment key={group.key}>
-                <TableRow className="bg-muted/60 hover:bg-muted/60">
-                  <TableCell colSpan={TABLE_COLUMN_COUNT} className="py-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <ProviderBadge provider={group.provider} />
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {formatGroupTimeRange(group.startTime, group.endTime)}
-                      </span>
-                      <Badge variant="outline">
-                        {group.logs.length} requests
-                      </Badge>
-                    </div>
-                  </TableCell>
-                </TableRow>
-                {group.logs.map((log) => {
-                  return (
-                    <LogRow
-                      key={log.id}
-                      log={log}
-                      selected={selectedIds.includes(log.id)}
-                      viewed={viewedId === log.id}
-                      onToggleSelect={onToggleSelect}
-                      onSelect={onSelect}
-                    />
-                  );
-                })}
-              </Fragment>
-            ))}
+            {groupedLogs.map((group) => {
+              const accent = getProviderAccent(group.provider);
+
+              return (
+                <Fragment key={group.key}>
+                  <TableRow className={accent.row}>
+                    <TableCell colSpan={TABLE_COLUMN_COUNT} className="py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={cn(
+                            "size-2.5 rounded-full ring-4",
+                            accent.dot
+                          )}
+                        />
+                        <ProviderBadge provider={group.provider} />
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {formatGroupTimeRange(group.startTime, group.endTime)}
+                        </span>
+                        <Badge variant="outline">
+                          {group.logs.length} requests
+                        </Badge>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {group.logs.map((log) => {
+                    return (
+                      <LogRow
+                        key={log.id}
+                        log={log}
+                        selected={selectedIds.includes(log.id)}
+                        viewed={viewedId === log.id}
+                        onToggleSelect={onToggleSelect}
+                        onSelect={onSelect}
+                      />
+                    );
+                  })}
+                </Fragment>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
