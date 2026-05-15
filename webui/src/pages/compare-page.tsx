@@ -13,11 +13,26 @@ import { Input } from "@/components/ui/input";
 import { LogDetail } from "@/components/log-detail";
 import { Separator } from "@/components/ui/separator";
 import { clearCompareSelection, loadCompareSelection } from "@/lib/compare-selection";
+import { parseLog, stringifyContent, type ParsedLog } from "@/lib/log-parsing";
 import type { RoutePath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ArrowsClockwiseIcon } from "@phosphor-icons/react";
 
 type ComparePair = [LogEntry, LogEntry];
+type DiffStatus = "same" | "different" | "left-only" | "right-only";
+
+interface DiffRowData {
+  label: string;
+  left: string;
+  right: string;
+  status: DiffStatus;
+}
+
+interface DiffSectionData {
+  title: string;
+  description: string;
+  rows: DiffRowData[];
+}
 
 function formatTime(value: string | null): string {
   if (!value) return "--";
@@ -36,40 +51,341 @@ function display(value: string | number | boolean | null | undefined): string {
   return String(value);
 }
 
-function ComparisonRow({
-  label,
-  left,
-  right,
-}: {
-  label: string;
-  left: string;
-  right: string;
-}) {
-  const same = left === right;
+function stableStringify(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "--";
+  }
+
+  if (typeof value === "string") {
+    return value || "--";
+  }
+
+  if (typeof value !== "object") {
+    return String(value);
+  }
+
+  return JSON.stringify(sortJsonValue(value), null, 2);
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortJsonValue);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+      .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
+  );
+}
+
+function toContentText(value: unknown): string {
+  const text = stringifyContent(value);
+  return text || stableStringify(value);
+}
+
+function getDiffStatus(left: string, right: string): DiffStatus {
+  if (left === right) return "same";
+  if (left === "--") return "right-only";
+  if (right === "--") return "left-only";
+  return "different";
+}
+
+function createDiffRow(label: string, left: string, right: string): DiffRowData {
+  return {
+    label,
+    left,
+    right,
+    status: getDiffStatus(left, right),
+  };
+}
+
+function hasOwnValue(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function statusLabel(status: DiffStatus): string {
+  if (status === "same") return "Same";
+  if (status === "left-only") return "Left only";
+  if (status === "right-only") return "Right only";
+  return "Different";
+}
+
+function DiffValue({ value }: { value: string }) {
+  return (
+    <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border border-border bg-muted/30 px-3 py-2 font-mono text-xs leading-relaxed">
+      {value}
+    </pre>
+  );
+}
+
+function StructuredDiffRow({ row }: { row: DiffRowData }) {
+  const same = row.status === "same";
 
   return (
     <div
       className={cn(
-        "grid gap-3 rounded-none border p-3 xl:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-center",
+        "grid gap-3 border p-3 xl:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)_6.5rem]",
         same
-          ? "border-secondary/30 bg-secondary/10"
-          : "border-destructive/25 bg-destructive/10"
+          ? "border-border/70 bg-background"
+          : "border-destructive/20 bg-destructive/5"
       )}
     >
-      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-        {label}
+      <div className="flex flex-col gap-2">
+        <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+          {row.label}
+        </span>
+        <Badge variant={same ? "secondary" : "destructive"} className="w-fit">
+          {statusLabel(row.status)}
+        </Badge>
       </div>
-      <div className="rounded-none border border-border bg-muted/30 px-3 py-2 font-mono text-xs break-words">
-        {left}
+      <DiffValue value={row.left} />
+      <DiffValue value={row.right} />
+      <div className="hidden items-center justify-end xl:flex">
+        <Badge variant={same ? "outline" : "destructive"}>
+          {same ? "=" : "!="}
+        </Badge>
       </div>
-      <div className="rounded-none border border-border bg-muted/30 px-3 py-2 font-mono text-xs break-words">
-        {right}
-      </div>
-      <Badge variant={same ? "secondary" : "destructive"} className="w-fit">
-        {same ? "Same" : "Different"}
-      </Badge>
     </div>
   );
+}
+
+function DiffSection({ section }: { section: DiffSectionData }) {
+  const changed = section.rows.filter((row) => row.status !== "same").length;
+
+  return (
+    <Card>
+      <CardHeader className="border-b border-border/70">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-1">
+            <CardTitle>{section.title}</CardTitle>
+            <CardDescription>{section.description}</CardDescription>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{section.rows.length - changed} same</Badge>
+            <Badge variant={changed > 0 ? "destructive" : "outline"}>
+              {changed} changed
+            </Badge>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 pt-4">
+        {section.rows.length > 0 ? (
+          section.rows.map((row) => (
+            <StructuredDiffRow key={row.label} row={row} />
+          ))
+        ) : (
+          <div className="border border-dashed border-border/80 p-6 text-sm text-muted-foreground">
+            No comparable data in this section.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function buildStructuredDiff(leftLog: LogEntry, rightLog: LogEntry): DiffSectionData[] {
+  const left = parseLog(leftLog);
+  const right = parseLog(rightLog);
+
+  return [
+    buildOverviewSection(leftLog, rightLog, left, right),
+    buildSystemSection(left, right),
+    buildMessagesSection(left, right),
+    buildToolsSection(left, right),
+    buildParamsSection(left, right),
+    buildResponseSection(left, right),
+  ];
+}
+
+function buildOverviewSection(
+  leftLog: LogEntry,
+  rightLog: LogEntry,
+  left: ParsedLog,
+  right: ParsedLog
+): DiffSectionData {
+  return {
+    title: "Request overview",
+    description: "Provider、模型、Token、耗时等请求级字段。",
+    rows: [
+      createDiffRow("Provider", leftLog.provider, rightLog.provider),
+      createDiffRow("Protocol", left.protocol, right.protocol),
+      createDiffRow("Endpoint", leftLog.endpoint, rightLog.endpoint),
+      createDiffRow("Upstream URL", leftLog.upstream_url || "--", rightLog.upstream_url || "--"),
+      createDiffRow("Model", leftLog.model || "--", rightLog.model || "--"),
+      createDiffRow("Status", display(leftLog.response_status), display(rightLog.response_status)),
+      createDiffRow("Streaming", display(Boolean(leftLog.is_streaming)), display(Boolean(rightLog.is_streaming))),
+      createDiffRow("Input tokens", display(leftLog.input_tokens), display(rightLog.input_tokens)),
+      createDiffRow("Output tokens", display(leftLog.output_tokens), display(rightLog.output_tokens)),
+      createDiffRow("Duration", display(leftLog.duration_ms == null ? null : `${leftLog.duration_ms}ms`), display(rightLog.duration_ms == null ? null : `${rightLog.duration_ms}ms`)),
+      createDiffRow("Request time", formatTime(leftLog.request_time), formatTime(rightLog.request_time)),
+    ],
+  };
+}
+
+function buildSystemSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
+  return {
+    title: "System prompt",
+    description: "归一化后的 system 指令内容。",
+    rows: [
+      createDiffRow(
+        "system",
+        left.request.systemPrompt || "--",
+        right.request.systemPrompt || "--"
+      ),
+    ],
+  };
+}
+
+function buildMessagesSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
+  const maxLength = Math.max(left.request.messages.length, right.request.messages.length);
+  const rows: DiffRowData[] = [];
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftMessage = left.request.messages[index];
+    const rightMessage = right.request.messages[index];
+    const leftLabel = leftMessage ? `${index + 1}. ${leftMessage.role}` : `${index + 1}. missing`;
+    const rightLabel = rightMessage ? `${index + 1}. ${rightMessage.role}` : `${index + 1}. missing`;
+    const label = leftLabel === rightLabel ? leftLabel : `${leftLabel} / ${rightLabel}`;
+
+    rows.push(
+      createDiffRow(
+        label,
+        leftMessage ? formatMessage(leftMessage) : "--",
+        rightMessage ? formatMessage(rightMessage) : "--"
+      )
+    );
+  }
+
+  return {
+    title: "Messages",
+    description: "按消息顺序对比 role、content、tool call 引用。",
+    rows,
+  };
+}
+
+function formatMessage(message: ParsedLog["request"]["messages"][number]): string {
+  const parts = [`role: ${message.role}`];
+
+  if (message.name) {
+    parts.push(`name: ${message.name}`);
+  }
+
+  if (message.tool_call_id) {
+    parts.push(`tool_call_id: ${message.tool_call_id}`);
+  }
+
+  parts.push(`content:\n${toContentText(message.content)}`);
+
+  if (message.tool_calls !== undefined) {
+    parts.push(`tool_calls:\n${stableStringify(message.tool_calls)}`);
+  }
+
+  return parts.join("\n");
+}
+
+function buildToolsSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
+  const names = Array.from(
+    new Set([
+      ...left.request.tools.map((tool) => tool.name),
+      ...right.request.tools.map((tool) => tool.name),
+    ])
+  ).sort((leftName, rightName) => leftName.localeCompare(rightName));
+
+  return {
+    title: "Tools",
+    description: "按工具名称对比 description、schema 和原始定义。",
+    rows: names.map((name) => {
+      const leftTool = left.request.tools.find((tool) => tool.name === name);
+      const rightTool = right.request.tools.find((tool) => tool.name === name);
+
+      return createDiffRow(
+        name,
+        leftTool ? formatTool(leftTool) : "--",
+        rightTool ? formatTool(rightTool) : "--"
+      );
+    }),
+  };
+}
+
+function formatTool(tool: ParsedLog["request"]["tools"][number]): string {
+  return [
+    `name: ${tool.name}`,
+    `description: ${tool.description || "--"}`,
+    `schema:\n${stableStringify(tool.schema)}`,
+  ].join("\n");
+}
+
+function buildParamsSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
+  const leftParams = left.request.params ?? {};
+  const rightParams = right.request.params ?? {};
+  const keys = Array.from(
+    new Set([...Object.keys(leftParams), ...Object.keys(rightParams)])
+  ).sort((leftKey, rightKey) => leftKey.localeCompare(rightKey));
+
+  return {
+    title: "Params",
+    description: "归一化请求参数，排除 messages、tools 等大块结构。",
+    rows: keys.map((key) =>
+      createDiffRow(
+        key,
+        hasOwnValue(leftParams, key) ? stableStringify(leftParams[key]) : "--",
+        hasOwnValue(rightParams, key) ? stableStringify(rightParams[key]) : "--"
+      )
+    ),
+  };
+}
+
+function buildResponseSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
+  const maxLength = Math.max(left.response.items.length, right.response.items.length);
+  const rows: DiffRowData[] = [
+    createDiffRow(
+      "effective body",
+      left.response.effectiveBody || "--",
+      right.response.effectiveBody || "--"
+    ),
+    createDiffRow(
+      "has tool calls",
+      display(left.response.hasToolCalls),
+      display(right.response.hasToolCalls)
+    ),
+  ];
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftItem = left.response.items[index];
+    const rightItem = right.response.items[index];
+    const leftLabel = leftItem ? `${index + 1}. ${leftItem.kind}` : `${index + 1}. missing`;
+    const rightLabel = rightItem ? `${index + 1}. ${rightItem.kind}` : `${index + 1}. missing`;
+    const label = leftLabel === rightLabel ? leftLabel : `${leftLabel} / ${rightLabel}`;
+
+    rows.push(
+      createDiffRow(
+        label,
+        leftItem ? formatResponseItem(leftItem) : "--",
+        rightItem ? formatResponseItem(rightItem) : "--"
+      )
+    );
+  }
+
+  return {
+    title: "Response",
+    description: "对比最终响应文本、工具调用和归一化响应项。",
+    rows,
+  };
+}
+
+function formatResponseItem(item: ParsedLog["response"]["items"][number]): string {
+  return [
+    `kind: ${item.kind}`,
+    `role: ${item.role || "--"}`,
+    item.name ? `name: ${item.name}` : null,
+    `content:\n${toContentText(item.content)}`,
+    item.raw !== undefined ? `raw:\n${stableStringify(item.raw)}` : null,
+  ].filter(Boolean).join("\n");
 }
 
 function LogPanel({
@@ -222,22 +538,9 @@ export function ComparePage({
     };
   }, [loadPair]);
 
-  const metrics = useMemo(() => {
+  const structuredSections = useMemo(() => {
     if (!pair) return [];
-
-    const [left, right] = pair;
-    return [
-      { label: "Provider", left: left.provider, right: right.provider },
-      { label: "Endpoint", left: left.endpoint, right: right.endpoint },
-      { label: "Upstream URL", left: left.upstream_url || "--", right: right.upstream_url || "--" },
-      { label: "Model", left: left.model || "--", right: right.model || "--" },
-      { label: "Status", left: display(left.response_status), right: display(right.response_status) },
-      { label: "Streaming", left: display(Boolean(left.is_streaming)), right: display(Boolean(right.is_streaming)) },
-      { label: "Input tokens", left: display(left.input_tokens), right: display(right.input_tokens) },
-      { label: "Output tokens", left: display(left.output_tokens), right: display(right.output_tokens) },
-      { label: "Duration", left: display(left.duration_ms == null ? null : `${left.duration_ms}ms`), right: display(right.duration_ms == null ? null : `${right.duration_ms}ms`) },
-      { label: "Request time", left: formatTime(left.request_time), right: formatTime(right.request_time) },
-    ];
+    return buildStructuredDiff(pair[0], pair[1]);
   }, [pair]);
 
   const handleSubmit = useCallback(async () => {
@@ -253,9 +556,15 @@ export function ComparePage({
     await loadPair(left, right);
   }, [leftId, loadPair, rightId]);
 
-  const sameMetrics = pair
-    ? metrics.filter((metric) => metric.left === metric.right).length
-    : 0;
+  const diffCounts = useMemo(() => {
+    const rows = structuredSections.flatMap((section) => section.rows);
+    const same = rows.filter((row) => row.status === "same").length;
+    return {
+      same,
+      changed: rows.length - same,
+      total: rows.length,
+    };
+  }, [structuredSections]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -339,34 +648,30 @@ export function ComparePage({
 
       {pair ? (
         <>
-          <Card className="ring-1 ring-border/70 bg-card">
-            <CardHeader className="border-b border-border/70">
-              <div className="flex flex-col gap-2">
-                <CardTitle>Quick diff</CardTitle>
-                <CardDescription>
-                  {sameMetrics} of {metrics.length} summary fields match.
-                </CardDescription>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary" className="shadow-sm">
-                    Same {sameMetrics}
-                  </Badge>
-                  <Badge variant="destructive" className="shadow-sm">
-                    Different {metrics.length - sameMetrics}
-                  </Badge>
-                </div>
+          <section className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <h2 className="text-lg font-medium tracking-tight">Structured diff</h2>
+              <p className="text-xs text-muted-foreground">
+                按请求结构分区对比，先看变化项，再展开完整日志核对。
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className="shadow-sm">
+                  Same {diffCounts.same}
+                </Badge>
+                <Badge variant="destructive" className="shadow-sm">
+                  Changed {diffCounts.changed}
+                </Badge>
+                <Badge variant="outline" className="shadow-sm">
+                  Total {diffCounts.total}
+                </Badge>
               </div>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3 pt-4">
-              {metrics.map((metric) => (
-                <ComparisonRow
-                  key={metric.label}
-                  label={metric.label}
-                  left={metric.left}
-                  right={metric.right}
-                />
+            </div>
+            <div className="grid gap-4">
+              {structuredSections.map((section) => (
+                <DiffSection key={section.title} section={section} />
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
           <Separator />
 
