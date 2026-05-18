@@ -17,6 +17,9 @@ import { toast } from "sonner";
 import { saveCompareSelection } from "@/lib/compare-selection";
 import type { RoutePath } from "@/lib/routes";
 
+const DEFAULT_GROUP_GAP_MINUTES = 3;
+const MINUTE_MS = 60 * 1000;
+
 export function LogsPage({
   onNavigate,
 }: {
@@ -33,6 +36,7 @@ export function LogsPage({
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
   const [viewedId, setViewedId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [groupGapMinutes, setGroupGapMinutes] = useState(DEFAULT_GROUP_GAP_MINUTES);
   const [loading, setLoading] = useState(false);
 
   const compareEnabled = selectedIds.length === 2;
@@ -175,6 +179,7 @@ export function LogsPage({
             model={model}
             search={search}
             models={models}
+            groupGapMinutes={groupGapMinutes}
             onProviderChange={(value) => {
               setProvider(value);
               setPage(1);
@@ -187,6 +192,7 @@ export function LogsPage({
               setSearch(value);
               setPage(1);
             }}
+            onGroupGapMinutesChange={setGroupGapMinutes}
             onRefresh={loadLogs}
           />
 
@@ -197,6 +203,7 @@ export function LogsPage({
               page={page}
               totalPages={totalPages}
               selectedIds={selectedIds}
+              groupGapMs={groupGapMinutes * MINUTE_MS}
               onPageChange={setPage}
               onToggleSelect={handleToggleSelect}
               viewedId={viewedId}

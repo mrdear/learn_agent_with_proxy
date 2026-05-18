@@ -22,13 +22,13 @@ interface LogTableProps {
   page: number;
   totalPages: number;
   selectedIds: number[];
+  groupGapMs: number;
   viewedId?: number | null;
   onPageChange: (page: number) => void;
   onToggleSelect: (log: LogEntry, checked: boolean) => void;
   onSelect: (log: LogEntry) => void;
 }
 
-const DEBUG_SESSION_GAP_MS = 3 * 60 * 1000;
 const TABLE_COLUMN_COUNT = 12;
 
 interface LogGroup {
@@ -122,7 +122,7 @@ function formatGroupTimeRange(startTime: number, endTime: number): string {
   return `${date} ${timeFormat.format(start)}-${timeFormat.format(end)}`;
 }
 
-function groupLogs(logs: LogEntry[]): LogGroup[] {
+function groupLogs(logs: LogEntry[], groupGapMs: number): LogGroup[] {
   const groups: LogGroup[] = [];
 
   for (const log of logs) {
@@ -131,7 +131,7 @@ function groupLogs(logs: LogEntry[]): LogGroup[] {
     const canJoinLatestGroup =
       latestGroup &&
       latestGroup.provider === log.provider &&
-      Math.abs(latestGroup.endTime - requestTime) <= DEBUG_SESSION_GAP_MS;
+      Math.abs(latestGroup.endTime - requestTime) <= groupGapMs;
 
     if (canJoinLatestGroup) {
       latestGroup.logs.push(log);
@@ -263,12 +263,13 @@ export function LogTable({
   page,
   totalPages,
   selectedIds,
+  groupGapMs,
   viewedId,
   onPageChange,
   onToggleSelect,
   onSelect,
 }: LogTableProps) {
-  const groupedLogs = groupLogs(logs);
+  const groupedLogs = groupLogs(logs, groupGapMs);
 
   if (loading) {
     return (
