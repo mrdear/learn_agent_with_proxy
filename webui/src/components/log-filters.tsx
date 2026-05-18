@@ -41,7 +41,7 @@ export function LogFilters({
   };
 
   return (
-    <div className="grid shrink-0 grid-cols-1 gap-3 md:grid-cols-[160px_220px_minmax(280px,1fr)_220px_auto]">
+    <div className="grid shrink-0 grid-cols-1 gap-3 md:grid-cols-[160px_220px_minmax(280px,1fr)_190px_auto]">
       <Select
         value={provider || "all"}
         onValueChange={(v) => onProviderChange(v === "all" ? "" : (v ?? ""))}
@@ -80,24 +80,23 @@ export function LogFilters({
         className="w-full"
       />
 
-      <div className="flex min-w-0 flex-col justify-center gap-2 rounded-none border border-border bg-background px-3 py-2">
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="log-group-gap" className="text-xs">
-            Group gap
-          </Label>
-          <span className="font-mono text-xs text-muted-foreground">
-            {groupGapMinutes} min
-          </span>
-        </div>
+      <div className="flex h-8 min-w-0 items-center gap-2 rounded-none border border-input bg-transparent px-2.5 dark:bg-input/30">
+        <Label htmlFor="log-group-gap" className="shrink-0 text-xs text-muted-foreground">
+          Gap
+        </Label>
         <Slider
           id="log-group-gap"
           value={[groupGapMinutes]}
           min={1}
           max={30}
           step={1}
+          className="min-w-16 flex-1"
           aria-label="Group gap in minutes"
           onValueChange={handleGroupGapChange}
         />
+        <span className="w-8 shrink-0 text-right font-mono text-xs text-muted-foreground">
+          {groupGapMinutes}m
+        </span>
       </div>
 
       <Button variant="default" size="icon" className="shadow-sm" onClick={onRefresh} title="Refresh">
