@@ -210,7 +210,7 @@ function LogRow({
         <StatusBadge status={log.response_status} />
       </TableCell>
       <TableCell
-        className="max-w-[220px] truncate font-mono text-xs"
+        className="max-w-[180px] truncate font-mono text-xs"
         title={log.model || undefined}
       >
         {log.model || "--"}
@@ -231,7 +231,7 @@ function LogRow({
         })()}
       </TableCell>
       <TableCell
-        className="max-w-[260px] truncate font-mono text-xs"
+        className="max-w-[210px] truncate font-mono text-xs"
         title={log.endpoint}
       >
         {log.endpoint}
@@ -303,24 +303,24 @@ export function LogTable({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
       <div className="min-h-0 min-w-0 flex-1 overflow-auto rounded-md border">
-        <Table className="min-w-[1770px]">
+        <Table className="min-w-[1540px]">
           <TableHeader>
             <TableRow>
               <TableHead className="w-[44px]">
                 <span className="sr-only">Select</span>
               </TableHead>
-              <TableHead className="w-[60px]">ID</TableHead>
-              <TableHead className="w-[100px]">Provider</TableHead>
-              <TableHead className="w-[80px]">Status</TableHead>
-              <TableHead className="w-[220px]">Model</TableHead>
-              <TableHead className="w-[420px]">User Message</TableHead>
-              <TableHead className="w-[260px]">Endpoint</TableHead>
-              <TableHead className="w-[80px]">Stream</TableHead>
-              <TableHead className="w-[90px]">Messages</TableHead>
-              <TableHead className="w-[120px]">Tools</TableHead>
-              <TableHead className="w-[120px]">Tokens (I/O)</TableHead>
-              <TableHead className="w-[80px]">Duration</TableHead>
-              <TableHead className="w-[140px]">Time</TableHead>
+              <TableHead className="w-[56px]">ID</TableHead>
+              <TableHead className="w-[90px]">Provider</TableHead>
+              <TableHead className="w-[72px]">Status</TableHead>
+              <TableHead className="w-[180px]">Model</TableHead>
+              <TableHead className="w-[330px]">User Message</TableHead>
+              <TableHead className="w-[210px]">Endpoint</TableHead>
+              <TableHead className="w-[70px]">Stream</TableHead>
+              <TableHead className="w-[80px]">Messages</TableHead>
+              <TableHead className="w-[115px]">Tools</TableHead>
+              <TableHead className="w-[105px]">Tokens</TableHead>
+              <TableHead className="w-[75px]">Duration</TableHead>
+              <TableHead className="w-[115px]">Time</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
