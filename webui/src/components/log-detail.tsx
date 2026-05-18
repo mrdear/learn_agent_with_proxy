@@ -277,15 +277,9 @@ export function LogDetail({
   onReplayComplete,
 }: LogDetailProps) {
   const parsed = useMemo(() => parseLog(log), [log]);
-  const displayMessages = useMemo<ParsedMessage[]>(() => {
-    const responseMessages = parsed.response.items.map((item) => ({
-      role: item.role,
-      content: item.content,
-      name: item.name,
-    }));
-    return [...parsed.request.messages, ...responseMessages];
-  }, [parsed]);
-  const nonSystemMessages = displayMessages.filter((message) => message.role !== "system");
+  const requestMessages = parsed.request.messages.filter(
+    (message) => message.role !== "system" && message.role !== "developer",
+  );
   const systemPrompt = parsed.request.systemPrompt;
   const tools = parsed.request.tools;
   const params = parsed.request.params;
@@ -427,7 +421,7 @@ export function LogDetail({
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="messages">
-            Messages {nonSystemMessages.length > 0 && `(${nonSystemMessages.length})`}
+            Messages {requestMessages.length > 0 && `(${requestMessages.length})`}
           </TabsTrigger>
           <TabsTrigger value="system">System Prompt</TabsTrigger>
           {tools.length > 0 && <TabsTrigger value="tools">Tools ({tools.length})</TabsTrigger>}
@@ -438,8 +432,8 @@ export function LogDetail({
         </TabsList>
 
         <TabsContent value="messages" className="mt-4 space-y-2">
-          {nonSystemMessages.length > 0 ? (
-            nonSystemMessages.map((msg, i) => (
+          {requestMessages.length > 0 ? (
+            requestMessages.map((msg, i) => (
               <MessageItem key={i} msg={msg} index={i} />
             ))
           ) : (

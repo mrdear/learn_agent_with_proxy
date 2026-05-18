@@ -5,7 +5,7 @@ import { openAIChatAdapter } from "./adapters/openai-chat";
 import { openAIResponsesAdapter } from "./adapters/openai-responses";
 import type { AdapterInput, LogAdapter } from "./adapters/types";
 import { lastTextFromContentParts, parseJson, parseJsonObject } from "./json";
-import type { ParsedLog, ParsedMessage } from "./types";
+import type { ParsedLog, ParsedMessage, ParsedResponseItem } from "./types";
 
 const adapters: LogAdapter[] = [
   openAIResponsesAdapter,
@@ -25,6 +25,20 @@ function firstUserMessage(messages: ParsedMessage[]): string | null {
   const userMessage = messages.find((message) => message.role === "user");
   if (!userMessage) return null;
   return lastTextFromContentParts(userMessage.content);
+}
+
+function countMessageToolCalls(messages: ParsedMessage[]): number {
+  return messages.reduce((count, message) => {
+    const explicitCalls = Array.isArray(message.tool_calls)
+      ? message.tool_calls.length
+      : 0;
+    const messageIsToolCall = message.role === "function_call" ? 1 : 0;
+    return count + explicitCalls + messageIsToolCall;
+  }, 0);
+}
+
+function countResponseToolCalls(items: ParsedResponseItem[]): number {
+  return items.filter((item) => item.kind === "tool_call").length;
 }
 
 export function parseLog(log: LogEntry): ParsedLog {
@@ -47,6 +61,10 @@ export function parseLog(log: LogEntry): ParsedLog {
     response,
     summary: {
       firstUserMessage: firstUserMessage(request.messages),
+      messageCount: request.messages.length,
+      toolsDefinedCount: request.tools.length,
+      toolCallCount:
+        countMessageToolCalls(request.messages) + countResponseToolCalls(response.items),
       hasToolsDefined: request.tools.length > 0,
       hasToolCalls: response.hasToolCalls,
     },

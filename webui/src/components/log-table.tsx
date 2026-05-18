@@ -29,7 +29,7 @@ interface LogTableProps {
   onSelect: (log: LogEntry) => void;
 }
 
-const TABLE_COLUMN_COUNT = 12;
+const TABLE_COLUMN_COUNT = 13;
 
 interface LogGroup {
   key: string;
@@ -105,6 +105,14 @@ function formatDuration(ms: number | null): string {
 function formatTokens(input: number | null, output: number | null): string {
   if (input === null && output === null) return "--";
   return `${input ?? "?"}/${output ?? "?"}`;
+}
+
+function CountBadge({ value, label }: { value: number; label: string }) {
+  return (
+    <Badge variant={value > 0 ? "secondary" : "outline"} className="font-mono">
+      {value} {label}
+    </Badge>
+  );
 }
 
 function formatGroupTimeRange(startTime: number, endTime: number): string {
@@ -236,13 +244,13 @@ function LogRow({
         )}
       </TableCell>
       <TableCell>
-        {parsed.summary.hasToolCalls ? (
-          <Badge variant="default">Call</Badge>
-        ) : parsed.summary.hasToolsDefined ? (
-          <Badge variant="outline">Def</Badge>
-        ) : (
-          <span className="text-xs text-muted-foreground">--</span>
-        )}
+        <CountBadge value={parsed.summary.messageCount} label="msg" />
+      </TableCell>
+      <TableCell>
+        <div className="flex flex-wrap gap-1">
+          <CountBadge value={parsed.summary.toolsDefinedCount} label="def" />
+          <CountBadge value={parsed.summary.toolCallCount} label="call" />
+        </div>
       </TableCell>
       <TableCell className="font-mono text-xs">
         {formatTokens(log.input_tokens, log.output_tokens)}
@@ -295,7 +303,7 @@ export function LogTable({
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
-        <Table className="min-w-[1680px]">
+        <Table className="min-w-[1770px]">
           <TableHeader>
             <TableRow>
               <TableHead className="w-[44px]">
@@ -308,7 +316,8 @@ export function LogTable({
               <TableHead className="w-[420px]">User Message</TableHead>
               <TableHead className="w-[260px]">Endpoint</TableHead>
               <TableHead className="w-[80px]">Stream</TableHead>
-              <TableHead className="w-[90px]">Tools</TableHead>
+              <TableHead className="w-[90px]">Messages</TableHead>
+              <TableHead className="w-[120px]">Tools</TableHead>
               <TableHead className="w-[120px]">Tokens (I/O)</TableHead>
               <TableHead className="w-[80px]">Duration</TableHead>
               <TableHead className="w-[140px]">Time</TableHead>

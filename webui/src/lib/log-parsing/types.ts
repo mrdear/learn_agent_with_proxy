@@ -44,6 +44,9 @@ export interface ParsedLog {
   };
   summary: {
     firstUserMessage: string | null;
+    messageCount: number;
+    toolsDefinedCount: number;
+    toolCallCount: number;
     hasToolsDefined: boolean;
     hasToolCalls: boolean;
   };
