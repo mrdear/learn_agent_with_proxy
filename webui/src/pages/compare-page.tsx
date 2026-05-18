@@ -158,7 +158,7 @@ function DiffSection({ section }: { section: DiffSectionData }) {
   const changed = section.rows.filter((row) => row.status !== "same").length;
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="border-b border-border/70">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-col gap-1">
@@ -173,7 +173,7 @@ function DiffSection({ section }: { section: DiffSectionData }) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 pt-4">
+      <CardContent className="flex min-w-0 flex-col gap-3 pt-4">
         {section.rows.length > 0 ? (
           section.rows.map((row) => (
             <StructuredDiffRow key={row.label} row={row} />
@@ -399,8 +399,8 @@ function LogPanel({
 }) {
   const panelClassName =
     tone === "left"
-      ? "overflow-hidden ring-1 ring-primary/15 bg-primary/5"
-      : "overflow-hidden ring-1 ring-secondary/20 bg-secondary/10";
+      ? "min-w-0 overflow-hidden ring-1 ring-primary/15 bg-primary/5"
+      : "min-w-0 overflow-hidden ring-1 ring-secondary/20 bg-secondary/10";
 
   return (
     <Card className={panelClassName}>
@@ -567,8 +567,8 @@ export function ComparePage({
   }, [structuredSections]);
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card className="overflow-hidden ring-1 ring-primary/10 bg-primary/5">
+    <div className="flex min-w-0 flex-col gap-4">
+      <Card className="min-w-0 overflow-hidden ring-1 ring-primary/10 bg-primary/5">
         <CardHeader className="border-b border-border/70">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex flex-col gap-1">
@@ -648,7 +648,7 @@ export function ComparePage({
 
       {pair ? (
         <>
-          <section className="flex flex-col gap-4">
+          <section className="flex min-w-0 flex-col gap-4">
             <div className="flex flex-col gap-2">
               <h2 className="text-lg font-medium tracking-tight">Structured diff</h2>
               <p className="text-xs text-muted-foreground">
@@ -666,7 +666,7 @@ export function ComparePage({
                 </Badge>
               </div>
             </div>
-            <div className="grid gap-4">
+            <div className="grid min-w-0 gap-4">
               {structuredSections.map((section) => (
                 <DiffSection key={section.title} section={section} />
               ))}
@@ -675,7 +675,7 @@ export function ComparePage({
 
           <Separator />
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid min-w-0 gap-4 2xl:grid-cols-2">
             <LogPanel title="Left log" log={pair[0]} tone="left" />
             <LogPanel title="Right log" log={pair[1]} tone="right" />
           </div>

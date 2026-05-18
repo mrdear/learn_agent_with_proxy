@@ -155,7 +155,7 @@ function EndpointRow({
   copyable?: boolean;
 }) {
   return (
-    <div className="grid gap-2 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 sm:grid-cols-[9rem_1fr_auto] sm:items-center">
+    <div className="grid min-w-0 gap-2 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-center">
       <span className="text-xs text-muted-foreground">{label}</span>
       <code className="truncate font-mono text-xs text-foreground">{value}</code>
       {copyable ? <CopyButton text={value} label="复制" /> : <span />}
@@ -169,7 +169,7 @@ function RecentLogRow({ log }: { log: LogEntry }) {
   const trimmed = summary.length > 120 ? `${summary.slice(0, 120)}...` : summary;
 
   return (
-    <div className="grid gap-3 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 md:grid-cols-[4.5rem_7rem_1fr_5rem] md:items-center">
+    <div className="grid min-w-0 gap-3 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 md:grid-cols-[4.25rem_6.5rem_minmax(0,1fr)_4.5rem] md:items-center">
       <div className="flex items-center gap-2">
         <span className="font-mono text-xs text-muted-foreground">#{log.id}</span>
         <StatusBadge status={log.response_status} />
@@ -201,7 +201,7 @@ function SnippetCard({
   code: string;
 }) {
   return (
-    <Card className="bg-card/80">
+    <Card className="min-w-0 bg-card/80">
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 flex-col gap-1">
@@ -312,8 +312,8 @@ export function DashboardPage({
 
   return (
     <div className="flex flex-col gap-5">
-      <section className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-        <Card className="bg-card/90">
+      <section className="grid min-w-0 gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+        <Card className="min-w-0 bg-card/90">
           <CardHeader className="border-b border-border/70">
             <CardDescription>Local proxy workspace</CardDescription>
             <CardTitle className="max-w-3xl text-3xl tracking-tight">
@@ -346,7 +346,7 @@ export function DashboardPage({
           </CardContent>
         </Card>
 
-        <Card className="bg-card/90">
+        <Card className="min-w-0 bg-card/90">
           <CardHeader>
             <CardTitle>代理连接</CardTitle>
             <CardDescription>客户端 SDK 只需要改这个入口。</CardDescription>
@@ -360,7 +360,7 @@ export function DashboardPage({
         </Card>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-3">
+      <section className="grid min-w-0 gap-3 md:grid-cols-3">
         <MetricCard
           label="日志总量"
           value={loading ? "--" : String(total)}
@@ -378,8 +378,8 @@ export function DashboardPage({
         />
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="bg-card/90">
+      <section className="grid min-w-0 gap-5 2xl:grid-cols-[1.05fr_0.95fr]">
+        <Card className="min-w-0 bg-card/90">
           <CardHeader>
             <CardTitle>最近请求</CardTitle>
             <CardDescription>
@@ -410,8 +410,8 @@ export function DashboardPage({
           </CardContent>
         </Card>
 
-        <div className="flex flex-col gap-5">
-          <Card className="bg-card/90">
+        <div className="flex min-w-0 flex-col gap-5">
+          <Card className="min-w-0 bg-card/90">
             <CardHeader>
               <CardTitle>后端环境变量</CardTitle>
               <CardDescription>只保留启动代理需要看的字段。</CardDescription>
@@ -423,7 +423,7 @@ export function DashboardPage({
             </CardContent>
           </Card>
 
-          <Card className="bg-card/90">
+          <Card className="min-w-0 bg-card/90">
             <CardHeader>
               <CardTitle>常见确认项</CardTitle>
               <CardDescription>请求发出去后，优先看这些字段。</CardDescription>
@@ -448,7 +448,7 @@ export function DashboardPage({
       </section>
 
       <section>
-        <Card className="bg-card/90">
+        <Card className="min-w-0 bg-card/90">
           <CardHeader>
             <CardTitle>接入示例</CardTitle>
             <CardDescription>

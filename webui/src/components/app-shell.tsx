@@ -195,7 +195,7 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
             <div
               className={cn(
                 "mx-auto flex min-w-0 w-full flex-col gap-6",
-                pathname === "/logs" ? "max-w-none" : "max-w-7xl"
+                pathname === "/logs" ? "max-w-none" : "max-w-6xl"
               )}
             >
               {children}
