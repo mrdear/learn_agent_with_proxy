@@ -196,7 +196,7 @@ export function LogsPage({
             onRefresh={loadLogs}
           />
 
-          <div className="min-h-0 flex-1">
+          <div className="min-h-0 min-w-0 flex-1">
             <LogTable
               logs={logs}
               loading={loading}

@@ -301,8 +301,8 @@ export function LogTable({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
-      <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto rounded-md border">
         <Table className="min-w-[1770px]">
           <TableHeader>
             <TableRow>
