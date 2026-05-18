@@ -153,8 +153,8 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
         <SidebarRail />
       </Sidebar>
 
-      <SidebarInset>
-        <div className="flex min-h-svh flex-col">
+      <SidebarInset className="min-w-0 overflow-x-hidden">
+        <div className="flex min-h-svh min-w-0 flex-col">
           <header className="sticky top-0 z-10 border-b border-border/70 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/80">
             <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
               <div className="flex min-w-0 items-center gap-3">
@@ -188,13 +188,13 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
 
           <div
             className={cn(
-              "flex-1 px-4 py-6 sm:px-6",
+              "min-w-0 flex-1 px-4 py-6 sm:px-6",
               pathname === "/logs" ? "lg:px-4 xl:px-6" : "lg:px-8"
             )}
           >
             <div
               className={cn(
-                "mx-auto flex w-full flex-col gap-6",
+                "mx-auto flex min-w-0 w-full flex-col gap-6",
                 pathname === "/logs" ? "max-w-none" : "max-w-7xl"
               )}
             >
