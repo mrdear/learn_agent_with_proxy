@@ -12,6 +12,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   deleteModelMapping,
   fetchModelMappings,
@@ -79,6 +80,8 @@ function AccessKeyPanel({
   regenerating: boolean;
   onRegenerate: () => void;
 }) {
+  const accessKeyPlaceholder = "Generated after save";
+
   return (
     <div className="grid min-w-0 gap-3 border border-primary/15 bg-primary/5 p-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
       <div className="flex min-w-0 flex-col gap-2">
@@ -91,8 +94,13 @@ function AccessKeyPanel({
             {PROVIDER_PATHS[draft.provider]}
           </Badge>
         </div>
-        <code className="truncate border border-border/70 bg-background px-2.5 py-2 font-mono text-xs">
-          {draft.access_key || "No access key"}
+        <code
+          className={cn(
+            "truncate border border-border/70 bg-background px-2.5 py-2 font-mono text-xs",
+            !draft.access_key && "text-muted-foreground"
+          )}
+        >
+          {draft.access_key || accessKeyPlaceholder}
         </code>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -132,15 +140,11 @@ function ProviderUpstreamForm({
   onChange: (draft: ProviderConfigDraft) => void;
   onSave: () => void;
 }) {
-  const keyState = draft.clear_api_key
-    ? "Will clear"
-    : draft.api_key
-      ? draft.api_key_configured
-        ? "Will replace"
-        : "Will set"
-      : draft.api_key_configured
-        ? "Key set"
-        : "No key";
+  const keyPlaceholder = draft.clear_api_key
+    ? "Will clear on save"
+    : draft.api_key_configured
+      ? "Configured - paste a new key to replace"
+      : "Paste upstream API key";
 
   return (
     <div className="flex flex-col gap-3">
@@ -166,23 +170,19 @@ function ProviderUpstreamForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(220px,1fr)_auto_auto_auto]">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(220px,1fr)_auto_auto]">
         <div className="flex flex-col gap-2">
           <Label htmlFor={`${draft.provider}-api-key`}>Upstream API key</Label>
           <Input
             id={`${draft.provider}-api-key`}
             type="password"
             value={draft.api_key}
-            placeholder={draft.api_key_configured ? "Configured" : ""}
+            placeholder={keyPlaceholder}
             onChange={(event) =>
               onChange({ ...draft, api_key: event.target.value, clear_api_key: false })
             }
           />
         </div>
-
-        <Badge variant="outline" className="h-8 self-end">
-          {keyState}
-        </Badge>
 
         <label className="flex h-8 items-center gap-2 self-end text-xs">
           <Checkbox
@@ -381,9 +381,6 @@ function ProviderPanel({
           <CardAction className="flex flex-wrap items-center gap-2">
             <Badge variant={draft.enabled ? "secondary" : "outline"}>
               {draft.enabled ? "Enabled" : "Disabled"}
-            </Badge>
-            <Badge variant={draft.api_key_configured ? "default" : "outline"}>
-              {draft.api_key_configured ? "upstream key set" : "no upstream key"}
             </Badge>
           </CardAction>
         </div>
