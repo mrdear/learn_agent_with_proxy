@@ -24,8 +24,20 @@ function getEncryptionKey(): Buffer {
   return crypto.createHash("sha256").update(readSecretMaterial()).digest();
 }
 
+function getHashKey(): Buffer {
+  return crypto.createHash("sha256").update(`access:${readSecretMaterial()}`).digest();
+}
+
 export function ensureConfigSecret(): void {
   readSecretMaterial();
+}
+
+export function createAccessKey(): string {
+  return `lap_${crypto.randomBytes(24).toString("base64url")}`;
+}
+
+export function hashConfigSecret(value: string): string {
+  return crypto.createHmac("sha256", getHashKey()).update(value).digest("base64url");
 }
 
 export function encryptConfigSecret(value: string | null | undefined): string | null {

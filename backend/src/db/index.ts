@@ -1,6 +1,11 @@
 import Database from "better-sqlite3";
 import path from "path";
-import { decryptConfigSecret, encryptConfigSecret } from "../lib/config-secret.js";
+import {
+  createAccessKey,
+  decryptConfigSecret,
+  encryptConfigSecret,
+  hashConfigSecret,
+} from "../lib/config-secret.js";
 
 const dbPath = process.env.DATABASE_URL || "./proxy.db";
 const resolvedPath = path.resolve(dbPath);
@@ -106,6 +111,8 @@ function ensureModelMappingColumn(column: string, ddl: string): void {
 ensureProviderConfigColumn("api_key_cipher", "ALTER TABLE provider_configs ADD COLUMN api_key_cipher TEXT");
 ensureProviderConfigColumn("default_model", "ALTER TABLE provider_configs ADD COLUMN default_model TEXT");
 ensureProviderConfigColumn("extra_headers", "ALTER TABLE provider_configs ADD COLUMN extra_headers TEXT");
+ensureProviderConfigColumn("access_key_cipher", "ALTER TABLE provider_configs ADD COLUMN access_key_cipher TEXT");
+ensureProviderConfigColumn("access_key_hash", "ALTER TABLE provider_configs ADD COLUMN access_key_hash TEXT");
 ensureProviderConfigColumn("enabled", "ALTER TABLE provider_configs ADD COLUMN enabled INTEGER DEFAULT 1");
 ensureProviderConfigColumn("created_at", "ALTER TABLE provider_configs ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP");
 ensureProviderConfigColumn("updated_at", "ALTER TABLE provider_configs ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP");
@@ -145,6 +152,8 @@ export interface ProviderConfigPublic {
   provider: ProviderName;
   base_url: string;
   api_key_configured: boolean;
+  access_key: string | null;
+  access_key_configured: boolean;
   default_model: string | null;
   extra_headers: Record<string, string>;
   enabled: boolean;
@@ -232,9 +241,9 @@ function createOpenAIExtraHeaders(): Record<string, string> {
 
 const seedProviderConfig = db.prepare(`
   INSERT OR IGNORE INTO provider_configs
-    (provider, base_url, api_key_cipher, default_model, extra_headers, enabled)
+    (provider, base_url, api_key_cipher, access_key_cipher, access_key_hash, default_model, extra_headers, enabled)
   VALUES
-    (@provider, @base_url, @api_key_cipher, @default_model, @extra_headers, 1)
+    (@provider, @base_url, @api_key_cipher, @access_key_cipher, @access_key_hash, @default_model, @extra_headers, 1)
 `);
 
 for (const config of [
@@ -266,12 +275,40 @@ for (const config of [
   default_model: string | null;
   extra_headers: Record<string, string>;
 }>) {
+  const accessKey = createAccessKey();
   seedProviderConfig.run({
     provider: config.provider,
     base_url: config.base_url,
     api_key_cipher: encryptConfigSecret(config.api_key),
+    access_key_cipher: encryptConfigSecret(accessKey),
+    access_key_hash: hashConfigSecret(accessKey),
     default_model: config.default_model,
     extra_headers: stringifyHeaders(config.extra_headers),
+  });
+}
+
+const rowsWithoutAccessKey = db
+  .prepare(
+    `SELECT provider FROM provider_configs
+     WHERE access_key_cipher IS NULL OR access_key_hash IS NULL`
+  )
+  .all() as Array<{ provider: string }>;
+
+const updateAccessKey = db.prepare(
+  `UPDATE provider_configs SET
+    access_key_cipher = @access_key_cipher,
+    access_key_hash = @access_key_hash,
+    updated_at = CURRENT_TIMESTAMP
+   WHERE provider = @provider`
+);
+
+for (const row of rowsWithoutAccessKey) {
+  if (!isProviderName(row.provider)) continue;
+  const accessKey = createAccessKey();
+  updateAccessKey.run({
+    provider: row.provider,
+    access_key_cipher: encryptConfigSecret(accessKey),
+    access_key_hash: hashConfigSecret(accessKey),
   });
 }
 
@@ -392,6 +429,8 @@ type ProviderConfigDbRow = {
   provider: string;
   base_url: string;
   api_key_cipher: string | null;
+  access_key_cipher: string | null;
+  access_key_hash: string | null;
   default_model: string | null;
   extra_headers: string | null;
   enabled: number;
@@ -407,6 +446,8 @@ function toPublicProviderConfig(row: ProviderConfigDbRow): ProviderConfigPublic 
     provider: row.provider,
     base_url: row.base_url,
     api_key_configured: Boolean(row.api_key_cipher),
+    access_key: decryptConfigSecret(row.access_key_cipher),
+    access_key_configured: Boolean(row.access_key_hash),
     default_model: row.default_model,
     extra_headers: parseHeadersJson(row.extra_headers),
     enabled: row.enabled === 1,
@@ -451,6 +492,19 @@ export function getProviderConfig(provider: ProviderName): ProviderRuntimeConfig
   };
 }
 
+export function getProviderConfigByAccessKey(accessKey: string): ProviderRuntimeConfig | null {
+  const accessKeyHash = hashConfigSecret(accessKey);
+  const row = db
+    .prepare("SELECT provider FROM provider_configs WHERE access_key_hash = @access_key_hash")
+    .get({ access_key_hash: accessKeyHash }) as { provider: string } | undefined;
+
+  if (!row || !isProviderName(row.provider)) {
+    return null;
+  }
+
+  return getProviderConfig(row.provider);
+}
+
 export function updateProviderConfig(data: {
   provider: ProviderName;
   base_url: string;
@@ -459,6 +513,7 @@ export function updateProviderConfig(data: {
   enabled: boolean;
   api_key?: string | null;
   clear_api_key?: boolean;
+  regenerate_access_key?: boolean;
 }): ProviderConfigPublic {
   const current = db
     .prepare("SELECT * FROM provider_configs WHERE provider = @provider")
@@ -469,15 +524,26 @@ export function updateProviderConfig(data: {
     : data.api_key !== undefined
       ? encryptConfigSecret(normalizeOptionalText(data.api_key))
       : (current?.api_key_cipher ?? null);
+  const accessKey = data.regenerate_access_key || !current?.access_key_cipher
+    ? createAccessKey()
+    : null;
+  const accessKeyCipher = accessKey
+    ? encryptConfigSecret(accessKey)
+    : (current?.access_key_cipher ?? null);
+  const accessKeyHash = accessKey
+    ? hashConfigSecret(accessKey)
+    : (current?.access_key_hash ?? null);
 
   db.prepare(
     `INSERT INTO provider_configs
-       (provider, base_url, api_key_cipher, default_model, extra_headers, enabled, updated_at)
+       (provider, base_url, api_key_cipher, access_key_cipher, access_key_hash, default_model, extra_headers, enabled, updated_at)
      VALUES
-       (@provider, @base_url, @api_key_cipher, @default_model, @extra_headers, @enabled, CURRENT_TIMESTAMP)
+       (@provider, @base_url, @api_key_cipher, @access_key_cipher, @access_key_hash, @default_model, @extra_headers, @enabled, CURRENT_TIMESTAMP)
      ON CONFLICT(provider) DO UPDATE SET
        base_url = excluded.base_url,
        api_key_cipher = excluded.api_key_cipher,
+       access_key_cipher = excluded.access_key_cipher,
+       access_key_hash = excluded.access_key_hash,
        default_model = excluded.default_model,
        extra_headers = excluded.extra_headers,
        enabled = excluded.enabled,
@@ -486,6 +552,8 @@ export function updateProviderConfig(data: {
     provider: data.provider,
     base_url: data.base_url.trim(),
     api_key_cipher: apiKeyCipher,
+    access_key_cipher: accessKeyCipher,
+    access_key_hash: accessKeyHash,
     default_model: normalizeOptionalText(data.default_model),
     extra_headers: stringifyHeaders(data.extra_headers),
     enabled: data.enabled ? 1 : 0,

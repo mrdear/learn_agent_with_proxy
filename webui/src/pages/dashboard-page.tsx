@@ -22,37 +22,49 @@ import {
 const PROXY_URL = "http://localhost:3000";
 const API_BASE_URL = `${PROXY_URL}/v1`;
 
-const OPENAI_SNIPPET = `import OpenAI from "openai";
+function accessKeyFor(config?: ProviderConfig): string {
+  return config?.access_key || "lap-configure-this-provider-in-settings";
+}
+
+function openAISnippet(config?: ProviderConfig): string {
+  return `import OpenAI from "openai";
 
 const client = new OpenAI({
   baseURL: "http://localhost:3000/v1",
-  apiKey: "sk-local-proxy",
+  apiKey: "${accessKeyFor(config)}",
 });`;
+}
 
-const OPENAI_RESPONSES_SNIPPET = `curl http://localhost:3000/v1/responses \\
+function openAIResponsesSnippet(config?: ProviderConfig): string {
+  return `curl http://localhost:3000/v1/responses \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer sk-local-proxy" \\
+  -H "Authorization: Bearer ${accessKeyFor(config)}" \\
   -d '{
     "model": "gpt-4o",
-    "messages": [{ "role": "user", "content": "Hello" }]
+    "input": [{ "role": "user", "content": "Hello" }]
   }'`;
+}
 
-const ANTHROPIC_SNIPPET = `import Anthropic from "@anthropic-ai/sdk";
+function anthropicSnippet(config?: ProviderConfig): string {
+  return `import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
   baseURL: "http://localhost:3000/v1",
-  apiKey: "sk-local-proxy",
+  apiKey: "${accessKeyFor(config)}",
 });`;
+}
 
-const CURL_SNIPPET = `curl http://localhost:3000/v1/chat/completions \\
+function curlSnippet(config?: ProviderConfig): string {
+  return `curl http://localhost:3000/v1/chat/completions \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer sk-local-proxy" \\
+  -H "Authorization: Bearer ${accessKeyFor(config)}" \\
   -d '{
     "model": "gpt-4.1-mini",
     "messages": [
       { "role": "user", "content": "Hello from the proxy" }
     ]
   }'`;
+}
 
 const BACKEND_ENV_SNIPPET = `PORT=3000
 DATABASE_URL=./proxy.db
@@ -213,10 +225,15 @@ function ProviderConfigStatus({ configs }: { configs: ProviderConfig[] }) {
           <code className="truncate font-mono text-xs text-muted-foreground">
             {config.base_url}
           </code>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Badge variant={config.api_key_configured ? "default" : "outline"}>
-              {config.api_key_configured ? "key set" : "no key"}
+              {config.api_key_configured ? "upstream key" : "no upstream key"}
             </Badge>
+            {config.access_key ? (
+              <CopyButton text={config.access_key} label="复制 AK" />
+            ) : (
+              <Badge variant="outline">no access key</Badge>
+            )}
             {!config.enabled && <Badge variant="destructive">disabled</Badge>}
           </div>
         </div>
@@ -229,10 +246,12 @@ function SnippetCard({
   title,
   description,
   code,
+  config,
 }: {
   title: string;
   description: string;
   code: string;
+  config?: ProviderConfig;
 }) {
   return (
     <Card className="min-w-0 bg-card/80">
@@ -241,6 +260,23 @@ function SnippetCard({
           <div className="flex min-w-0 flex-col gap-1">
             <CardTitle>{title}</CardTitle>
             <CardDescription>{description}</CardDescription>
+            {config ? (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Badge variant={config.enabled ? "secondary" : "outline"}>
+                  {config.enabled ? "enabled" : "disabled"}
+                </Badge>
+                <Badge variant={config.access_key_configured ? "default" : "outline"}>
+                  {config.access_key_configured ? "access key" : "no access key"}
+                </Badge>
+                <code className="max-w-full truncate font-mono text-[11px] text-muted-foreground">
+                  {config.base_url}
+                </code>
+              </div>
+            ) : (
+              <div className="pt-1">
+                <Badge variant="destructive">Configure in Settings</Badge>
+              </div>
+            )}
           </div>
           <CopyButton text={code} />
         </div>
@@ -254,7 +290,11 @@ function SnippetCard({
   );
 }
 
-function ProviderTabs() {
+function ProviderTabs({ configs }: { configs: ProviderConfig[] }) {
+  const openAIConfig = configs.find((config) => config.provider === "openai");
+  const responsesConfig = configs.find((config) => config.provider === "openai-responses");
+  const anthropicConfig = configs.find((config) => config.provider === "anthropic");
+
   return (
     <Tabs defaultValue="openai" className="w-full">
       <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
@@ -268,7 +308,8 @@ function ProviderTabs() {
         <SnippetCard
           title="OpenAI SDK"
           description="把 baseURL 指向本地代理的 /v1 路径。"
-          code={OPENAI_SNIPPET}
+          code={openAISnippet(openAIConfig)}
+          config={openAIConfig}
         />
       </TabsContent>
 
@@ -276,7 +317,8 @@ function ProviderTabs() {
         <SnippetCard
           title="Responses API"
           description="适合需要直接验证 /responses 路径的集成。"
-          code={OPENAI_RESPONSES_SNIPPET}
+          code={openAIResponsesSnippet(responsesConfig)}
+          config={responsesConfig}
         />
       </TabsContent>
 
@@ -284,7 +326,8 @@ function ProviderTabs() {
         <SnippetCard
           title="Anthropic SDK"
           description="请求会由代理转换到兼容的上游格式。"
-          code={ANTHROPIC_SNIPPET}
+          code={anthropicSnippet(anthropicConfig)}
+          config={anthropicConfig}
         />
       </TabsContent>
 
@@ -292,7 +335,8 @@ function ProviderTabs() {
         <SnippetCard
           title="cURL"
           description="不接 SDK 时，用命令行快速打一条请求。"
-          code={CURL_SNIPPET}
+          code={curlSnippet(openAIConfig)}
+          config={openAIConfig}
         />
       </TabsContent>
     </Tabs>
@@ -517,7 +561,7 @@ export function DashboardPage({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ProviderTabs />
+            <ProviderTabs configs={providerConfigs} />
           </CardContent>
         </Card>
       </section>

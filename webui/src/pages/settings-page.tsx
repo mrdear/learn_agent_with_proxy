@@ -13,13 +13,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   deleteModelMapping,
   fetchModelMappings,
   fetchProviderConfigs,
@@ -30,13 +23,19 @@ import {
   type ProviderConfig,
   type ProviderName,
 } from "@/lib/api";
-import { Check, FloppyDisk, Key, Trash } from "@phosphor-icons/react";
+import { ArrowsClockwise, Copy, FloppyDisk, Key, Trash } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
-  openai: "OpenAI",
+  openai: "OpenAI Chat",
   "openai-responses": "OpenAI Responses",
-  anthropic: "Anthropic",
+  anthropic: "Anthropic Messages",
+};
+
+const PROVIDER_PATHS: Record<ProviderName, string> = {
+  openai: "/v1/chat/completions",
+  "openai-responses": "/v1/responses",
+  anthropic: "/v1/messages",
 };
 
 type ProviderConfigDraft = ProviderConfig & {
@@ -44,12 +43,15 @@ type ProviderConfigDraft = ProviderConfig & {
   clear_api_key: boolean;
 };
 
-const emptyMapping: ModelMappingInput = {
-  provider: "openai",
-  source_model: "",
-  target_model: "",
-  enabled: true,
-};
+type MappingDraft = Omit<ModelMappingInput, "provider">;
+
+function emptyMappingDraft(): MappingDraft {
+  return {
+    source_model: "",
+    target_model: "",
+    enabled: true,
+  };
+}
 
 function toDraft(config: ProviderConfig): ProviderConfigDraft {
   return {
@@ -59,7 +61,67 @@ function toDraft(config: ProviderConfig): ProviderConfigDraft {
   };
 }
 
-function ProviderCard({
+async function copyText(value: string, label: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(value);
+    toast.success(`${label} copied`);
+  } catch {
+    toast.error("Copy failed");
+  }
+}
+
+function AccessKeyPanel({
+  draft,
+  regenerating,
+  onRegenerate,
+}: {
+  draft: ProviderConfigDraft;
+  regenerating: boolean;
+  onRegenerate: () => void;
+}) {
+  return (
+    <div className="grid min-w-0 gap-3 border border-primary/15 bg-primary/5 p-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+      <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">
+            <Key data-icon="inline-start" />
+            Proxy access
+          </Badge>
+          <Badge variant="outline" className="font-mono">
+            {PROVIDER_PATHS[draft.provider]}
+          </Badge>
+        </div>
+        <code className="truncate border border-border/70 bg-background px-2.5 py-2 font-mono text-xs">
+          {draft.access_key || "No access key"}
+        </code>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!draft.access_key}
+          onClick={() => draft.access_key && void copyText(draft.access_key, "Access key")}
+        >
+          <Copy data-icon="inline-start" />
+          Copy AK
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={regenerating}
+          onClick={onRegenerate}
+        >
+          <ArrowsClockwise data-icon="inline-start" />
+          {regenerating ? "Regenerating" : "Regenerate"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ProviderUpstreamForm({
   draft,
   saving,
   onChange,
@@ -81,151 +143,98 @@ function ProviderCard({
         : "No key";
 
   return (
-    <Card>
-      <CardHeader className="border-b border-border/70">
-        <div className="flex min-w-0 flex-wrap items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <CardTitle>{PROVIDER_LABELS[draft.provider]}</CardTitle>
-            <CardDescription className="font-mono">{draft.provider}</CardDescription>
-          </div>
-          <CardAction className="flex items-center gap-2">
-            <Badge variant={draft.enabled ? "secondary" : "outline"}>
-              {draft.enabled ? "Enabled" : "Disabled"}
-            </Badge>
-            {draft.api_key_configured ? (
-              <Badge variant="outline">
-                <Key data-icon="inline-start" />
-                {keyState}
-              </Badge>
-            ) : (
-              <Badge variant="outline">{keyState}</Badge>
-            )}
-          </CardAction>
-        </div>
-      </CardHeader>
-
-      <CardContent className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(260px,1fr)_minmax(180px,260px)]">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${draft.provider}-base-url`}>Endpoint</Label>
-            <Input
-              id={`${draft.provider}-base-url`}
-              value={draft.base_url}
-              onChange={(event) =>
-                onChange({ ...draft, base_url: event.target.value })
-              }
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${draft.provider}-default-model`}>Default model</Label>
-            <Input
-              id={`${draft.provider}-default-model`}
-              value={draft.default_model ?? ""}
-              onChange={(event) =>
-                onChange({ ...draft, default_model: event.target.value || null })
-              }
-            />
-          </div>
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(260px,1fr)_minmax(180px,260px)]">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={`${draft.provider}-base-url`}>Upstream endpoint</Label>
+          <Input
+            id={`${draft.provider}-base-url`}
+            value={draft.base_url}
+            onChange={(event) => onChange({ ...draft, base_url: event.target.value })}
+          />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(220px,1fr)_auto_auto]">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${draft.provider}-api-key`}>API key</Label>
-            <Input
-              id={`${draft.provider}-api-key`}
-              type="password"
-              value={draft.api_key}
-              placeholder={draft.api_key_configured ? "Configured" : ""}
-              onChange={(event) =>
-                onChange({ ...draft, api_key: event.target.value, clear_api_key: false })
-              }
-            />
-          </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={`${draft.provider}-default-model`}>Default model</Label>
+          <Input
+            id={`${draft.provider}-default-model`}
+            value={draft.default_model ?? ""}
+            onChange={(event) =>
+              onChange({ ...draft, default_model: event.target.value || null })
+            }
+          />
+        </div>
+      </div>
 
-          <label className="flex h-8 items-center gap-2 self-end text-xs">
-            <Checkbox
-              checked={draft.enabled}
-              onCheckedChange={(checked) =>
-                onChange({ ...draft, enabled: checked === true })
-              }
-            />
-            Enabled
-          </label>
-
-          <label className="flex h-8 items-center gap-2 self-end text-xs">
-            <Checkbox
-              checked={draft.clear_api_key}
-              onCheckedChange={(checked) =>
-                onChange({ ...draft, clear_api_key: checked === true, api_key: "" })
-              }
-            />
-            Clear key
-          </label>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(220px,1fr)_auto_auto_auto]">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={`${draft.provider}-api-key`}>Upstream API key</Label>
+          <Input
+            id={`${draft.provider}-api-key`}
+            type="password"
+            value={draft.api_key}
+            placeholder={draft.api_key_configured ? "Configured" : ""}
+            onChange={(event) =>
+              onChange({ ...draft, api_key: event.target.value, clear_api_key: false })
+            }
+          />
         </div>
 
-        <div className="flex justify-end">
-          <Button type="button" onClick={onSave} disabled={saving}>
-            <FloppyDisk data-icon="inline-start" />
-            Save
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        <Badge variant="outline" className="h-8 self-end">
+          {keyState}
+        </Badge>
+
+        <label className="flex h-8 items-center gap-2 self-end text-xs">
+          <Checkbox
+            checked={draft.enabled}
+            onCheckedChange={(checked) => onChange({ ...draft, enabled: checked === true })}
+          />
+          Enabled
+        </label>
+
+        <label className="flex h-8 items-center gap-2 self-end text-xs">
+          <Checkbox
+            checked={draft.clear_api_key}
+            onCheckedChange={(checked) =>
+              onChange({ ...draft, clear_api_key: checked === true, api_key: "" })
+            }
+          />
+          Clear key
+        </label>
+      </div>
+
+      <div className="flex justify-end">
+        <Button type="button" onClick={onSave} disabled={saving}>
+          <FloppyDisk data-icon="inline-start" />
+          Save upstream
+        </Button>
+      </div>
+    </div>
   );
 }
 
-function MappingProviderSelect({
-  value,
-  onChange,
-}: {
-  value: ProviderName;
-  onChange: (value: ProviderName) => void;
-}) {
-  return (
-    <Select value={value} onValueChange={(next) => onChange(next as ProviderName)}>
-      <SelectTrigger className="w-full">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {(Object.keys(PROVIDER_LABELS) as ProviderName[]).map((provider) => (
-          <SelectItem key={provider} value={provider}>
-            {PROVIDER_LABELS[provider]}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-function MappingConfigurator({
+function MappingEditor({
+  provider,
   draft,
   loading,
   saving,
   onChange,
   onSave,
 }: {
-  draft: ModelMappingInput;
+  provider: ProviderName;
+  draft: MappingDraft;
   loading: boolean;
   saving: boolean;
-  onChange: (draft: ModelMappingInput) => void;
+  onChange: (draft: MappingDraft) => void;
   onSave: () => void;
 }) {
   return (
-    <div className="grid min-w-0 gap-4 border border-primary/15 bg-primary/5 p-3 lg:grid-cols-[220px_minmax(0,1fr)_auto]">
-      <div className="flex min-w-0 flex-col gap-2">
-        <Label>Provider</Label>
-        <MappingProviderSelect
-          value={draft.provider}
-          onChange={(provider) => onChange({ ...draft, provider })}
-        />
-      </div>
-
+    <div className="grid min-w-0 gap-3 border border-border/70 p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
       <div className="grid min-w-0 gap-3 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-2">
-          <Label htmlFor="mapping-source-model">Request model</Label>
+          <Label htmlFor={`${provider}-mapping-source`}>Request model</Label>
           <Input
-            id="mapping-source-model"
+            id={`${provider}-mapping-source`}
             value={draft.source_model}
             placeholder="gpt-4.1-mini"
             className="font-mono"
@@ -233,9 +242,9 @@ function MappingConfigurator({
           />
         </div>
         <div className="flex min-w-0 flex-col gap-2">
-          <Label htmlFor="mapping-target-model">Upstream model</Label>
+          <Label htmlFor={`${provider}-mapping-target`}>Upstream model</Label>
           <Input
-            id="mapping-target-model"
+            id={`${provider}-mapping-target`}
             value={draft.target_model}
             placeholder="openai/gpt-4.1-mini"
             className="font-mono"
@@ -254,6 +263,7 @@ function MappingConfigurator({
         </label>
         <Button
           type="button"
+          variant="outline"
           onClick={onSave}
           disabled={
             loading ||
@@ -262,7 +272,6 @@ function MappingConfigurator({
             !draft.target_model.trim()
           }
         >
-          <Check data-icon="inline-start" />
           Save mapping
         </Button>
       </div>
@@ -281,8 +290,8 @@ function MappingList({
 }) {
   if (mappings.length === 0) {
     return (
-      <div className="border border-dashed border-border/80 p-6 text-sm text-muted-foreground">
-        还没有模型映射。保存上面的配置后，会出现在这里。
+      <div className="border border-dashed border-border/80 p-4 text-sm text-muted-foreground">
+        No model mappings.
       </div>
     );
   }
@@ -292,14 +301,8 @@ function MappingList({
       {mappings.map((mapping) => (
         <div
           key={mapping.id}
-          className="grid min-w-0 gap-3 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 lg:grid-cols-[180px_minmax(0,1fr)_auto] lg:items-center"
+          className="grid min-w-0 gap-3 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
         >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{PROVIDER_LABELS[mapping.provider]}</Badge>
-            <Badge variant={mapping.enabled ? "outline" : "destructive"}>
-              {mapping.enabled ? "Enabled" : "Disabled"}
-            </Badge>
-          </div>
           <div className="grid min-w-0 gap-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
             <code className="truncate font-mono text-xs">{mapping.source_model}</code>
             <span className="hidden text-xs text-muted-foreground md:inline">to</span>
@@ -308,6 +311,9 @@ function MappingList({
             </code>
           </div>
           <div className="flex items-center gap-1 lg:justify-end">
+            <Badge variant={mapping.enabled ? "outline" : "destructive"}>
+              {mapping.enabled ? "Enabled" : "Disabled"}
+            </Badge>
             <Button
               type="button"
               variant="outline"
@@ -333,12 +339,117 @@ function MappingList({
   );
 }
 
+function ProviderPanel({
+  draft,
+  mappings,
+  mappingDraft,
+  loading,
+  savingProvider,
+  regeneratingAccessKey,
+  savingMapping,
+  onDraftChange,
+  onSaveProvider,
+  onRegenerateAccessKey,
+  onMappingDraftChange,
+  onSaveMapping,
+  onToggleMapping,
+  onDeleteMapping,
+}: {
+  draft: ProviderConfigDraft;
+  mappings: ModelMapping[];
+  mappingDraft: MappingDraft;
+  loading: boolean;
+  savingProvider: boolean;
+  regeneratingAccessKey: boolean;
+  savingMapping: boolean;
+  onDraftChange: (draft: ProviderConfigDraft) => void;
+  onSaveProvider: () => void;
+  onRegenerateAccessKey: () => void;
+  onMappingDraftChange: (draft: MappingDraft) => void;
+  onSaveMapping: () => void;
+  onToggleMapping: (mapping: ModelMapping) => void;
+  onDeleteMapping: (id: number) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader className="border-b border-border/70">
+        <div className="flex min-w-0 flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <CardTitle>{PROVIDER_LABELS[draft.provider]}</CardTitle>
+            <CardDescription className="font-mono">{draft.provider}</CardDescription>
+          </div>
+          <CardAction className="flex flex-wrap items-center gap-2">
+            <Badge variant={draft.enabled ? "secondary" : "outline"}>
+              {draft.enabled ? "Enabled" : "Disabled"}
+            </Badge>
+            <Badge variant={draft.api_key_configured ? "default" : "outline"}>
+              {draft.api_key_configured ? "upstream key set" : "no upstream key"}
+            </Badge>
+          </CardAction>
+        </div>
+      </CardHeader>
+
+      <CardContent className="flex flex-col gap-4">
+        <AccessKeyPanel
+          draft={draft}
+          regenerating={regeneratingAccessKey}
+          onRegenerate={onRegenerateAccessKey}
+        />
+        <ProviderUpstreamForm
+          draft={draft}
+          saving={savingProvider}
+          onChange={onDraftChange}
+          onSave={onSaveProvider}
+        />
+        <details className="group overflow-hidden border border-border/70">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-muted/30 px-3 py-2 text-xs font-medium outline-none hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+            <span>Optional model mappings</span>
+            <Badge variant="outline">{mappings.length}</Badge>
+          </summary>
+          <div className="flex flex-col gap-3 border-t border-border/70 p-3">
+            <MappingEditor
+              provider={draft.provider}
+              draft={mappingDraft}
+              loading={loading}
+              saving={savingMapping}
+              onChange={onMappingDraftChange}
+              onSave={onSaveMapping}
+            />
+            <MappingList
+              mappings={mappings}
+              onToggle={onToggleMapping}
+              onDelete={onDeleteMapping}
+            />
+          </div>
+        </details>
+      </CardContent>
+    </Card>
+  );
+}
+
+function createMappingDrafts(): Record<ProviderName, MappingDraft> {
+  return {
+    openai: emptyMappingDraft(),
+    "openai-responses": emptyMappingDraft(),
+    anthropic: emptyMappingDraft(),
+  };
+}
+
+function sortMappings(mappings: ModelMapping[]): ModelMapping[] {
+  return [...mappings].sort((left, right) =>
+    `${left.provider}:${left.source_model}`.localeCompare(
+      `${right.provider}:${right.source_model}`
+    )
+  );
+}
+
 export function SettingsPage() {
   const [providerDrafts, setProviderDrafts] = useState<ProviderConfigDraft[]>([]);
   const [mappings, setMappings] = useState<ModelMapping[]>([]);
-  const [mappingDraft, setMappingDraft] = useState<ModelMappingInput>(emptyMapping);
+  const [mappingDrafts, setMappingDrafts] = useState(createMappingDrafts);
   const [savingProvider, setSavingProvider] = useState<ProviderName | null>(null);
-  const [savingMapping, setSavingMapping] = useState(false);
+  const [regeneratingProvider, setRegeneratingProvider] = useState<ProviderName | null>(null);
+  const [savingMapping, setSavingMapping] = useState<ProviderName | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadSettings = useCallback(async () => {
@@ -349,7 +460,7 @@ export function SettingsPage() {
         fetchModelMappings(),
       ]);
       setProviderDrafts(configs.map(toDraft));
-      setMappings(modelMappings);
+      setMappings(sortMappings(modelMappings));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load settings");
     } finally {
@@ -374,13 +485,21 @@ export function SettingsPage() {
     );
   };
 
-  const saveProvider = async (provider: ProviderName) => {
+  const saveProvider = async (
+    provider: ProviderName,
+    options?: { regenerateAccessKey?: boolean }
+  ) => {
     const draft = providerDraftByName.get(provider);
     if (!draft) {
       return;
     }
 
-    setSavingProvider(provider);
+    if (options?.regenerateAccessKey) {
+      setRegeneratingProvider(provider);
+    } else {
+      setSavingProvider(provider);
+    }
+
     try {
       const updated = await updateProviderSettings(provider, {
         base_url: draft.base_url,
@@ -389,34 +508,47 @@ export function SettingsPage() {
         default_model: draft.default_model,
         extra_headers: draft.extra_headers,
         enabled: draft.enabled,
+        regenerate_access_key: options?.regenerateAccessKey,
       });
       updateDraft(toDraft(updated));
-      toast.success(`${PROVIDER_LABELS[provider]} saved`);
+      toast.success(
+        options?.regenerateAccessKey
+          ? `${PROVIDER_LABELS[provider]} access key regenerated`
+          : `${PROVIDER_LABELS[provider]} saved`
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save provider");
     } finally {
       setSavingProvider(null);
+      setRegeneratingProvider(null);
     }
   };
 
-  const addMapping = async () => {
-    setSavingMapping(true);
+  const saveMappingForProvider = async (provider: ProviderName) => {
+    const draft = mappingDrafts[provider];
+    setSavingMapping(provider);
     try {
-      const saved = await saveModelMapping(mappingDraft);
-      setMappings((current) => {
-        const withoutExisting = current.filter((mapping) => mapping.id !== saved.id);
-        return [...withoutExisting, saved].sort((left, right) =>
-          `${left.provider}:${left.source_model}`.localeCompare(
-            `${right.provider}:${right.source_model}`
-          )
-        );
+      const saved = await saveModelMapping({
+        provider,
+        source_model: draft.source_model,
+        target_model: draft.target_model,
+        enabled: draft.enabled,
       });
-      setMappingDraft(emptyMapping);
+      setMappings((current) =>
+        sortMappings([
+          ...current.filter((mapping) => mapping.id !== saved.id),
+          saved,
+        ])
+      );
+      setMappingDrafts((current) => ({
+        ...current,
+        [provider]: emptyMappingDraft(),
+      }));
       toast.success("Mapping saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save mapping");
     } finally {
-      setSavingMapping(false);
+      setSavingMapping(null);
     }
   };
 
@@ -452,46 +584,36 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {providerDrafts.map((draft) => (
-          <ProviderCard
+      {providerDrafts.map((draft) => {
+        const providerMappings = mappings.filter((mapping) => mapping.provider === draft.provider);
+
+        return (
+          <ProviderPanel
             key={draft.provider}
             draft={draft}
-            saving={savingProvider === draft.provider}
-            onChange={updateDraft}
-            onSave={() => void saveProvider(draft.provider)}
-          />
-        ))}
-      </div>
-
-      <Card>
-        <CardHeader className="border-b border-border/70">
-          <div className="flex min-w-0 flex-wrap items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <CardTitle>Model mappings</CardTitle>
-              <CardDescription>Request model to upstream model</CardDescription>
-            </div>
-            <CardAction>
-              <Badge variant="secondary">{mappings.length}</Badge>
-            </CardAction>
-          </div>
-        </CardHeader>
-
-        <CardContent className="flex flex-col gap-4">
-          <MappingConfigurator
-            draft={mappingDraft}
+            mappings={providerMappings}
+            mappingDraft={mappingDrafts[draft.provider]}
             loading={loading}
-            saving={savingMapping}
-            onChange={setMappingDraft}
-            onSave={() => void addMapping()}
+            savingProvider={savingProvider === draft.provider}
+            regeneratingAccessKey={regeneratingProvider === draft.provider}
+            savingMapping={savingMapping === draft.provider}
+            onDraftChange={updateDraft}
+            onSaveProvider={() => void saveProvider(draft.provider)}
+            onRegenerateAccessKey={() =>
+              void saveProvider(draft.provider, { regenerateAccessKey: true })
+            }
+            onMappingDraftChange={(nextDraft) =>
+              setMappingDrafts((current) => ({
+                ...current,
+                [draft.provider]: nextDraft,
+              }))
+            }
+            onSaveMapping={() => void saveMappingForProvider(draft.provider)}
+            onToggleMapping={(mapping) => void toggleMapping(mapping)}
+            onDeleteMapping={(id) => void removeMapping(id)}
           />
-          <MappingList
-            mappings={mappings}
-            onToggle={(mapping) => void toggleMapping(mapping)}
-            onDelete={(id) => void removeMapping(id)}
-          />
-        </CardContent>
-      </Card>
+        );
+      })}
     </div>
   );
 }

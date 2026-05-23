@@ -12,6 +12,14 @@ export function setHeader(headers: Record<string, string>, name: string, value: 
   headers[name] = value;
 }
 
+export function deleteHeader(headers: Record<string, string>, name: string): void {
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === name.toLowerCase()) {
+      delete headers[key];
+    }
+  }
+}
+
 export function readNumber(value: unknown): number | null {
   return typeof value === "number" ? value : null;
 }
@@ -43,22 +51,12 @@ export function cloneJsonBody(body: Record<string, unknown>): Record<string, unk
   return { ...body };
 }
 
-function getHeader(headers: Record<string, string>, name: string): string | null {
-  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === name.toLowerCase());
-  return entry?.[1] ?? null;
-}
-
 export function getOpenAIApiKey(
   config: RelayProviderConfig,
-  headers: Record<string, string>
+  _headers: Record<string, string>
 ): string {
   if (config.apiKey) {
     return config.apiKey;
-  }
-
-  const authorization = getHeader(headers, "authorization");
-  if (authorization?.toLowerCase().startsWith("bearer ")) {
-    return authorization.slice(7).trim() || "proxy";
   }
 
   return "proxy";
@@ -66,13 +64,13 @@ export function getOpenAIApiKey(
 
 export function getAnthropicApiKey(
   config: RelayProviderConfig,
-  headers: Record<string, string>
+  _headers: Record<string, string>
 ): string {
   if (config.apiKey) {
     return config.apiKey;
   }
 
-  return getHeader(headers, "x-api-key") || "proxy";
+  return "proxy";
 }
 
 function applyConfiguredHeaders(
@@ -89,6 +87,8 @@ export function prepareOpenAIHeaders(
   config: RelayProviderConfig
 ): Record<string, string> {
   const relayHeaders = sanitizeHeaders(requestHeaders);
+  deleteHeader(relayHeaders, "Authorization");
+  deleteHeader(relayHeaders, "x-api-key");
   applyConfiguredHeaders(relayHeaders, config.extraHeaders);
 
   if (config.apiKey) {
@@ -103,6 +103,8 @@ export function prepareAnthropicHeaders(
   config: RelayProviderConfig
 ): Record<string, string> {
   const relayHeaders = sanitizeHeaders(requestHeaders);
+  deleteHeader(relayHeaders, "Authorization");
+  deleteHeader(relayHeaders, "x-api-key");
   applyConfiguredHeaders(relayHeaders, config.extraHeaders);
 
   if (config.apiKey) {

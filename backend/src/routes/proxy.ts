@@ -8,7 +8,7 @@ import {
 import { cloneResponseHeaders, sanitizeHeaders } from "../lib/http.js";
 import { getRelayStrategy, type RelayStrategy } from "../lib/strategies/index.js";
 import { proxyEventBus } from "../events/index.js";
-import { getProviderConfig } from "../db/index.js";
+import { getProviderConfigByAccessKey } from "../db/index.js";
 
 function isBodyMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
@@ -22,6 +22,15 @@ function createResponseHeaders(response: Response, defaultContentType?: string):
   }
 
   return headers;
+}
+
+function readBearerToken(headers: Headers): string | null {
+  const authorization = headers.get("authorization")?.trim();
+  if (!authorization?.toLowerCase().startsWith("bearer ")) {
+    return null;
+  }
+
+  return authorization.slice(7).trim() || null;
 }
 
 async function recordStreamingResponse(params: {
@@ -59,8 +68,9 @@ proxy.all("/v1/*", async (c) => {
   const rawHeaders = c.req.raw.headers;
   const provider = detectProvider(rawHeaders, requestUrl.pathname);
   const strategy = getRelayStrategy(provider);
-  const providerConfig = getProviderConfig(provider);
   const logHeaders = sanitizeHeaders(rawHeaders);
+  const accessKey = readBearerToken(rawHeaders);
+  const providerConfig = accessKey ? getProviderConfigByAccessKey(accessKey) : null;
 
   let requestBody: string | null = null;
   let bodyInspection = inspectRequestBody(null);
@@ -70,8 +80,15 @@ proxy.all("/v1/*", async (c) => {
     bodyInspection = inspectRequestBody(requestBody);
   }
 
-  if (!providerConfig?.enabled) {
-    const message = providerConfig ? `Provider disabled: ${provider}` : `Provider not configured: ${provider}`;
+  if (!providerConfig || providerConfig.provider !== provider || !providerConfig.enabled) {
+    const status = providerConfig?.enabled === false ? 400 : 401;
+    const message = !accessKey
+      ? "Missing proxy access key"
+      : !providerConfig
+        ? "Invalid proxy access key"
+        : providerConfig.provider !== provider
+          ? `Access key is for ${providerConfig.provider}, not ${provider}`
+          : `Provider disabled: ${provider}`;
 
     proxyEventBus.emit("proxy:request", {
       requestId,
@@ -88,13 +105,13 @@ proxy.all("/v1/*", async (c) => {
 
     proxyEventBus.emit("proxy:error", {
       requestId,
-      status: 400,
+      status,
       error: message,
       responseTime: new Date().toISOString(),
       durationMs: Date.now() - startTime,
     });
 
-    return c.json({ error: "Proxy configuration error", message }, 400);
+    return c.json({ error: "Proxy access error", message }, status as 400 | 401);
   }
 
   const relayRequest = strategy.prepareRelayRequest(bodyInspection, rawHeaders, providerConfig);

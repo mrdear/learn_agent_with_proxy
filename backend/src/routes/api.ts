@@ -176,6 +176,7 @@ api.put("/provider-configs/:provider", async (c) => {
     enabled: payload.enabled !== false,
     api_key: typeof payload.api_key === "string" ? payload.api_key : undefined,
     clear_api_key: payload.clear_api_key === true,
+    regenerate_access_key: payload.regenerate_access_key === true,
   });
 
   return c.json(updated);

@@ -10,6 +10,8 @@ const BLOCKED_HEADERS = new Set([
   "upgrade",
   "content-length",
   "content-encoding",
+  "authorization",
+  "x-api-key",
 ]);
 
 function cloneHeaders(headers: Headers): Record<string, string> {

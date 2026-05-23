@@ -40,6 +40,8 @@ export interface ProviderConfig {
   provider: ProviderName;
   base_url: string;
   api_key_configured: boolean;
+  access_key: string | null;
+  access_key_configured: boolean;
   default_model: string | null;
   extra_headers: Record<string, string>;
   enabled: boolean;
@@ -53,6 +55,7 @@ export interface ProviderConfigUpdate {
   default_model?: string | null;
   extra_headers?: Record<string, string>;
   enabled: boolean;
+  regenerate_access_key?: boolean;
 }
 
 export interface ModelMapping {

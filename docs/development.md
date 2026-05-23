@@ -32,7 +32,9 @@ DATABASE_URL=./proxy.db
 PROXY_CONFIG_SECRET=use-a-long-random-local-secret
 ```
 
-Provider 的 endpoint、API key、默认模型和模型映射在 Web UI 的 Settings 页面维护，写入 SQLite。API key 会以 AES-256-GCM 密文保存；加密主密钥来自 `PROXY_CONFIG_SECRET`，如果没有设置，后端会生成 `backend/.proxy-secret`。
+Provider 的 endpoint、上游 API key、默认模型、本地 access key 和模型映射在 Web UI 的 Settings 页面维护，写入 SQLite。上游 API key 会以 AES-256-GCM 密文保存；加密主密钥来自 `PROXY_CONFIG_SECRET`，如果没有设置，后端会生成 `backend/.proxy-secret`。
+
+客户端 SDK 使用 Settings 里对应 provider 的本地 access key，比如 `Authorization: Bearer lap_xxx`。代理用这个 key 定位 provider 配置，再用后端保存的上游 API key 转发请求；客户端不会拿到上游 API key。
 
 首次启动时，如果旧的 `OPENAI_BASE_URL`、`ANTHROPIC_BASE_URL`、`OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 还存在，会只用来初始化空库里的默认 provider 配置。已有 DB 配置优先级更高。
 
