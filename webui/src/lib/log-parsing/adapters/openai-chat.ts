@@ -6,6 +6,7 @@ import {
   hasResponseToolCalls,
   normalizeSystemContent,
 } from "./shared";
+import { tryParseJsonContent } from "../json";
 
 function parseMessages(body: Record<string, unknown> | null): ParsedMessage[] {
   if (!Array.isArray(body?.messages)) return [];
@@ -25,6 +26,10 @@ function parseSystemPrompt(messages: ParsedMessage[]): string | null {
 }
 
 function parseResponseItems(responseBody: unknown): ParsedResponseItem[] {
+  if (Array.isArray(responseBody)) {
+    return parseStreamingResponseItems(responseBody);
+  }
+
   if (!responseBody || typeof responseBody !== "object" || Array.isArray(responseBody)) {
     return [];
   }
@@ -67,6 +72,91 @@ function parseResponseItems(responseBody: unknown): ParsedResponseItem[] {
 
     return items;
   });
+}
+
+function parseStreamingResponseItems(chunks: unknown[]): ParsedResponseItem[] {
+  let text = "";
+  const toolCalls = new Map<
+    string,
+    {
+      id?: string;
+      type?: string;
+      function: {
+        name?: string;
+        arguments: string;
+      };
+    }
+  >();
+
+  for (const chunk of chunks) {
+    if (!chunk || typeof chunk !== "object") continue;
+    const choices = (chunk as Record<string, unknown>).choices;
+    if (!Array.isArray(choices)) continue;
+
+    for (const choice of choices) {
+      if (!choice || typeof choice !== "object") continue;
+      const delta = (choice as Record<string, unknown>).delta;
+      if (!delta || typeof delta !== "object") continue;
+
+      const typedDelta = delta as Record<string, unknown>;
+      if (typeof typedDelta.content === "string") {
+        text += typedDelta.content;
+      }
+
+      if (!Array.isArray(typedDelta.tool_calls)) continue;
+      for (const toolCall of typedDelta.tool_calls) {
+        if (!toolCall || typeof toolCall !== "object") continue;
+        const typedToolCall = toolCall as Record<string, unknown>;
+        const index =
+          typeof typedToolCall.index === "number" ? String(typedToolCall.index) : null;
+        const id = typeof typedToolCall.id === "string" ? typedToolCall.id : null;
+        const key = id || index || String(toolCalls.size);
+        const current =
+          toolCalls.get(key) ??
+          {
+            function: {
+              arguments: "",
+            },
+          };
+        const fn = typedToolCall.function as Record<string, unknown> | undefined;
+
+        if (id) current.id = id;
+        if (typeof typedToolCall.type === "string") current.type = typedToolCall.type;
+        if (typeof fn?.name === "string") current.function.name = fn.name;
+        if (typeof fn?.arguments === "string") current.function.arguments += fn.arguments;
+
+        toolCalls.set(key, current);
+      }
+    }
+  }
+
+  const items: ParsedResponseItem[] = [];
+  if (text) {
+    items.push({
+      kind: "message",
+      role: "assistant",
+      content: text,
+    });
+  }
+
+  for (const toolCall of toolCalls.values()) {
+    const parsedArguments = tryParseJsonContent(toolCall.function.arguments);
+    items.push({
+      kind: "tool_call",
+      role: "function_call",
+      content: {
+        ...toolCall,
+        function: {
+          ...toolCall.function,
+          arguments: parsedArguments ?? toolCall.function.arguments,
+        },
+      },
+      name: toolCall.function.name || "unknown",
+      raw: toolCall,
+    });
+  }
+
+  return items;
 }
 
 export const openAIChatAdapter: LogAdapter = {

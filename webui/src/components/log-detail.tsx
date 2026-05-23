@@ -15,6 +15,7 @@ import {
   parseLog,
   stringifyContent,
   tryParseJsonContent,
+  type LogProtocol,
   type ParsedMessage,
   type ParsedResponseItem,
   type ParsedTool,
@@ -223,16 +224,160 @@ function ResponseItem({ item, index }: { item: ParsedResponseItem; index: number
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const parsed = tryParseJsonContent(value);
+  return parsed ?? value;
+}
+
+function extractToolPayload(item: ParsedResponseItem): {
+  name: string;
+  callId: string | null;
+  argumentsData: unknown;
+  raw: unknown;
+} {
+  const raw = isRecord(item.raw) ? item.raw : isRecord(item.content) ? item.content : null;
+  const openAIChatFunction = isRecord(raw?.function) ? raw.function : null;
+  const name =
+    item.name ||
+    (typeof raw?.name === "string" ? raw.name : null) ||
+    (typeof openAIChatFunction?.name === "string" ? openAIChatFunction.name : null) ||
+    "unknown";
+  const callId =
+    (typeof raw?.call_id === "string" ? raw.call_id : null) ||
+    (typeof raw?.id === "string" ? raw.id : null);
+  const argumentsData =
+    raw?.arguments ??
+    openAIChatFunction?.arguments ??
+    raw?.input ??
+    item.content;
+
+  return {
+    name,
+    callId,
+    argumentsData: parseMaybeJson(argumentsData),
+    raw: item.raw ?? item.content,
+  };
+}
+
+function ToolCallResponseItem({ item, index }: { item: ParsedResponseItem; index: number }) {
+  const payload = extractToolPayload(item);
+
+  return (
+    <div className="overflow-hidden rounded-none border border-border">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-2">
+        <Badge variant="secondary">Tool call</Badge>
+        <span className="font-mono text-xs font-medium">{payload.name}</span>
+        <span className="font-mono text-[10px] text-muted-foreground">#{index}</span>
+        {payload.callId && (
+          <Badge variant="outline" className="font-mono">
+            {payload.callId}
+          </Badge>
+        )}
+      </div>
+      <div className="flex flex-col gap-3 p-3">
+        <div className="flex flex-col gap-1.5">
+          <p className="text-xs font-medium text-muted-foreground">Arguments</p>
+          {isRecord(payload.argumentsData) || Array.isArray(payload.argumentsData) ? (
+            <JsonViewer data={payload.argumentsData} />
+          ) : (
+            <div className="max-h-[320px] overflow-auto rounded-md border border-border bg-muted/30 p-3">
+              <MarkdownViewer content={stringifyContent(payload.argumentsData)} />
+            </div>
+          )}
+        </div>
+        <details className="group overflow-hidden rounded-none border border-border">
+          <summary className="flex cursor-pointer list-none items-center gap-2 bg-muted/30 px-3 py-2 text-xs text-muted-foreground outline-none hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+            <CaretRight className="transition-transform group-open:rotate-90" />
+            Raw tool payload
+          </summary>
+          <div className="border-t border-border p-3">
+            {isRecord(payload.raw) || Array.isArray(payload.raw) ? (
+              <JsonViewer data={payload.raw} />
+            ) : (
+              <pre className="max-h-[320px] overflow-auto rounded-md border border-border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
+                {stringifyContent(payload.raw)}
+              </pre>
+            )}
+          </div>
+        </details>
+      </div>
+    </div>
+  );
+}
+
+function ReadableResponseItem({ item, index }: { item: ParsedResponseItem; index: number }) {
+  if (item.kind === "tool_call") {
+    return <ToolCallResponseItem item={item} index={index} />;
+  }
+
+  return <ResponseItem item={item} index={index} />;
+}
+
+function ProtocolBadge({ protocol }: { protocol: LogProtocol }) {
+  const label: Record<LogProtocol, string> = {
+    "openai-chat": "OpenAI Chat",
+    "openai-responses": "Responses",
+    anthropic: "Anthropic",
+    unknown: "Unknown",
+  };
+
+  return <Badge variant="outline">{label[protocol]}</Badge>;
+}
+
+function RawResponseBlock({ label, data }: { label: string; data: string | null }) {
+  if (!data) {
+    return null;
+  }
+
+  const parsed = tryParseJsonContent(data);
+
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <Badge variant="outline" className="font-mono">
+          {parsed ? "json" : "text"}
+        </Badge>
+      </div>
+      {parsed && (isRecord(parsed) || Array.isArray(parsed)) ? (
+        <JsonViewer data={parsed} />
+      ) : (
+        <pre className="max-h-[520px] overflow-auto rounded-md border border-border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
+          {data}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function ResponsePanel({
   items,
-  raw,
   effectiveBody,
+  finalBody,
+  streamingChunks,
+  protocol,
+  hasToolCalls,
 }: {
   items: ParsedResponseItem[];
-  raw: unknown | null;
   effectiveBody: string | null;
+  finalBody: string | null;
+  streamingChunks: string | null;
+  protocol: LogProtocol;
+  hasToolCalls: boolean;
 }) {
-  if (!effectiveBody) {
+  const readableText = finalBody || effectiveBody;
+  const messageCount = items.filter((item) => item.kind === "message").length;
+  const toolCallCount = items.filter((item) => item.kind === "tool_call").length;
+
+  if (!readableText && items.length === 0 && !streamingChunks) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
         No response body
@@ -240,31 +385,48 @@ function ResponsePanel({
     );
   }
 
-  if (items.length > 0) {
-    return (
-      <div className="space-y-3">
-        {items.map((item, index) => (
-          <ResponseItem key={index} item={item} index={index} />
-        ))}
-        <Separator />
-        {raw && typeof raw === "object" ? (
-          <JsonViewer data={raw as object} />
-        ) : (
-          <div className="max-h-[700px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4">
-            <MarkdownViewer content={effectiveBody} />
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (raw && typeof raw === "object") {
-    return <JsonViewer data={raw as object} />;
-  }
-
   return (
-    <div className="max-h-[700px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4">
-      <MarkdownViewer content={effectiveBody} />
+    <div className="flex min-w-0 flex-col gap-4">
+      <section className="overflow-hidden rounded-none border border-border">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">Readable</Badge>
+            <ProtocolBadge protocol={protocol} />
+            <Badge variant="outline">{messageCount} messages</Badge>
+            <Badge variant={hasToolCalls ? "secondary" : "outline"}>
+              {toolCallCount} tool calls
+            </Badge>
+          </div>
+        </div>
+        <div className="flex flex-col gap-3 p-3">
+          {items.length > 0 ? (
+            items.map((item, index) => (
+              <ReadableResponseItem key={index} item={item} index={index} />
+            ))
+          ) : readableText ? (
+            <div className="max-h-[520px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4">
+              <MarkdownViewer content={readableText} />
+            </div>
+          ) : (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No readable response extracted
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-none border border-border">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">Raw</Badge>
+            {streamingChunks && <Badge variant="secondary">Streaming chunks</Badge>}
+          </div>
+        </div>
+        <div className="flex flex-col gap-4 p-3">
+          <RawResponseBlock label="Response body" data={finalBody || effectiveBody} />
+          <RawResponseBlock label="Streaming chunks" data={streamingChunks} />
+        </div>
+      </section>
     </div>
   );
 }
@@ -474,8 +636,11 @@ export function LogDetail({
         <TabsContent value="response" className="mt-4">
           <ResponsePanel
             items={parsed.response.items}
-            raw={parsed.response.raw}
             effectiveBody={parsed.response.effectiveBody}
+            finalBody={log.response_body_finish}
+            streamingChunks={log.is_streaming === 1 ? log.response_body : null}
+            protocol={parsed.protocol}
+            hasToolCalls={parsed.response.hasToolCalls}
           />
         </TabsContent>
 

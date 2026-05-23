@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { type LogEntry, fetchLogs } from "@/lib/api";
+import { type LogEntry, fetchLogs, fetchProviderConfigs, type ProviderConfig } from "@/lib/api";
 import { parseLog } from "@/lib/log-parsing";
 import type { RoutePath } from "@/lib/routes";
 import {
@@ -189,6 +189,40 @@ function RecentLogRow({ log }: { log: LogEntry }) {
   );
 }
 
+function ProviderConfigStatus({ configs }: { configs: ProviderConfig[] }) {
+  if (configs.length === 0) {
+    return (
+      <div className="border border-dashed border-border/80 p-4 text-sm text-muted-foreground">
+        Settings 里还没有 provider 配置。
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col">
+      {configs.map((config) => (
+        <div
+          key={config.provider}
+          className="grid min-w-0 gap-2 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 md:grid-cols-[8rem_minmax(0,1fr)_auto]"
+        >
+          <Badge variant={config.enabled ? "secondary" : "outline"}>
+            {config.provider}
+          </Badge>
+          <code className="truncate font-mono text-xs text-muted-foreground">
+            {config.base_url}
+          </code>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={config.api_key_configured ? "default" : "outline"}>
+              {config.api_key_configured ? "key set" : "no key"}
+            </Badge>
+            {!config.enabled && <Badge variant="destructive">disabled</Badge>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SnippetCard({
   title,
   description,
@@ -269,6 +303,7 @@ export function DashboardPage({
   onNavigate: (path: RoutePath) => void;
 }) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [providerConfigs, setProviderConfigs] = useState<ProviderConfig[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -278,8 +313,12 @@ export function DashboardPage({
     setLoadFailed(false);
 
     try {
-      const response = await fetchLogs({ page: 1, pageSize: 6 });
+      const [response, configs] = await Promise.all([
+        fetchLogs({ page: 1, pageSize: 6 }),
+        fetchProviderConfigs(),
+      ]);
       setLogs(response.data);
+      setProviderConfigs(configs);
       setTotal(response.total);
     } catch (error) {
       console.error("Failed to fetch dashboard logs:", error);
@@ -416,6 +455,21 @@ export function DashboardPage({
         </Card>
 
         <div className="flex min-w-0 flex-col gap-5">
+          <Card className="min-w-0 bg-card/90">
+            <CardHeader>
+              <CardTitle>Provider 配置</CardTitle>
+              <CardDescription>当前上游 endpoint 和 key 状态。</CardDescription>
+              <CardAction>
+                <Button type="button" variant="outline" size="sm" onClick={() => onNavigate("/settings")}>
+                  Settings
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <ProviderConfigStatus configs={providerConfigs} />
+            </CardContent>
+          </Card>
+
           <Card className="min-w-0 bg-card/90">
             <CardHeader>
               <CardTitle>后端环境变量</CardTitle>

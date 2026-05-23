@@ -29,7 +29,7 @@ interface LogTableProps {
   onSelect: (log: LogEntry) => void;
 }
 
-const TABLE_COLUMN_COUNT = 13;
+const TABLE_COLUMN_COUNT = 14;
 
 interface LogGroup {
   key: string;
@@ -112,6 +112,37 @@ function CountBadge({ value, label }: { value: number; label: string }) {
     <Badge variant={value > 0 ? "secondary" : "outline"} className="font-mono">
       {value} {label}
     </Badge>
+  );
+}
+
+function SignalBadges({ log }: { log: LogEntry }) {
+  const signals: Array<{ label: string; variant: "outline" | "secondary" | "destructive" }> = [];
+
+  if (log.error || (log.response_status !== null && log.response_status >= 400)) {
+    signals.push({ label: "error", variant: "destructive" });
+  }
+  if (!log.upstream_url) {
+    signals.push({ label: "no upstream", variant: "outline" });
+  }
+  if (log.source_log_id) {
+    signals.push({ label: "replay", variant: "secondary" });
+  }
+  if (log.duration_ms !== null && log.duration_ms >= 10000) {
+    signals.push({ label: "slow", variant: "outline" });
+  }
+
+  if (signals.length === 0) {
+    return <span className="text-xs text-muted-foreground">--</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {signals.map((signal) => (
+        <Badge key={signal.label} variant={signal.variant} className="text-[10px]">
+          {signal.label}
+        </Badge>
+      ))}
+    </div>
   );
 }
 
@@ -258,6 +289,9 @@ function LogRow({
       <TableCell className="font-mono text-xs">
         {formatDuration(log.duration_ms)}
       </TableCell>
+      <TableCell>
+        <SignalBadges log={log} />
+      </TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {formatTime(log.request_time)}
       </TableCell>
@@ -303,7 +337,7 @@ export function LogTable({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
       <div className="min-h-0 min-w-0 flex-1 overflow-auto rounded-md border">
-        <Table className="min-w-[1540px]">
+        <Table className="min-w-[1660px]">
           <TableHeader>
             <TableRow>
               <TableHead className="w-[44px]">
@@ -320,6 +354,7 @@ export function LogTable({
               <TableHead className="w-[115px]">Tools</TableHead>
               <TableHead className="w-[105px]">Tokens</TableHead>
               <TableHead className="w-[75px]">Duration</TableHead>
+              <TableHead className="w-[120px]">Signals</TableHead>
               <TableHead className="w-[115px]">Time</TableHead>
             </TableRow>
           </TableHeader>

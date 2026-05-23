@@ -188,6 +188,64 @@ function DiffSection({ section }: { section: DiffSectionData }) {
   );
 }
 
+function DiffSummary({
+  sections,
+}: {
+  sections: DiffSectionData[];
+}) {
+  const summaries = sections.map((section) => {
+    const changed = section.rows.filter((row) => row.status !== "same");
+    return {
+      title: section.title,
+      changed,
+      total: section.rows.length,
+    };
+  });
+  const changedSections = summaries.filter((summary) => summary.changed.length > 0);
+
+  return (
+    <Card className="min-w-0 bg-card/90">
+      <CardHeader className="border-b border-border/70">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <CardTitle>Change summary</CardTitle>
+            <CardDescription>先扫变化集中在哪些区域。</CardDescription>
+          </div>
+          <Badge variant={changedSections.length > 0 ? "destructive" : "secondary"}>
+            {changedSections.length} sections changed
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-3 pt-4 md:grid-cols-2 xl:grid-cols-3">
+        {summaries.map((summary) => {
+          const firstChanged = summary.changed[0];
+          return (
+            <div
+              key={summary.title}
+              className={cn(
+                "flex min-w-0 flex-col gap-2 border p-3",
+                summary.changed.length > 0
+                  ? "border-destructive/20 bg-destructive/5"
+                  : "border-border/70 bg-background"
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{summary.title}</span>
+                <Badge variant={summary.changed.length > 0 ? "destructive" : "outline"}>
+                  {summary.changed.length}/{summary.total}
+                </Badge>
+              </div>
+              <p className="truncate text-xs text-muted-foreground">
+                {firstChanged ? firstChanged.label : "No changes"}
+              </p>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
 function buildStructuredDiff(leftLog: LogEntry, rightLog: LogEntry): DiffSectionData[] {
   const left = parseLog(leftLog);
   const right = parseLog(rightLog);
@@ -666,6 +724,7 @@ export function ComparePage({
                 </Badge>
               </div>
             </div>
+            <DiffSummary sections={structuredSections} />
             <div className="grid min-w-0 gap-4">
               {structuredSections.map((section) => (
                 <DiffSection key={section.title} section={section} />

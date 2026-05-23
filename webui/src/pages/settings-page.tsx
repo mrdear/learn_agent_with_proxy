@@ -78,6 +78,16 @@ function ProviderCard({
   onChange: (draft: ProviderConfigDraft) => void;
   onSave: () => void;
 }) {
+  const keyState = draft.clear_api_key
+    ? "Will clear"
+    : draft.api_key
+      ? draft.api_key_configured
+        ? "Will replace"
+        : "Will set"
+      : draft.api_key_configured
+        ? "Key set"
+        : "No key";
+
   return (
     <Card>
       <CardHeader className="border-b border-border/70">
@@ -93,9 +103,11 @@ function ProviderCard({
             {draft.api_key_configured ? (
               <Badge variant="outline">
                 <Key data-icon="inline-start" />
-                Key set
+                {keyState}
               </Badge>
-            ) : null}
+            ) : (
+              <Badge variant="outline">{keyState}</Badge>
+            )}
           </CardAction>
         </div>
       </CardHeader>
@@ -291,6 +303,26 @@ export function SettingsPage() {
     }
   };
 
+  const toggleMapping = async (mapping: ModelMapping) => {
+    try {
+      const saved = await saveModelMapping(
+        {
+          provider: mapping.provider,
+          source_model: mapping.source_model,
+          target_model: mapping.target_model,
+          enabled: mapping.enabled !== 1,
+        },
+        mapping.id
+      );
+      setMappings((current) =>
+        current.map((item) => (item.id === saved.id ? saved : item))
+      );
+      toast.success(saved.enabled ? "Mapping enabled" : "Mapping disabled");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update mapping");
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -360,7 +392,7 @@ export function SettingsPage() {
                 <TableHead>Request model</TableHead>
                 <TableHead>Upstream model</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-10"> </TableHead>
+                <TableHead className="w-[110px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -375,16 +407,26 @@ export function SettingsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Delete"
-                      aria-label="Delete mapping"
-                      onClick={() => void removeMapping(mapping.id)}
-                    >
-                      <Trash data-icon="inline-start" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="xs"
+                        onClick={() => void toggleMapping(mapping)}
+                      >
+                        {mapping.enabled ? "Disable" : "Enable"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Delete"
+                        aria-label="Delete mapping"
+                        onClick={() => void removeMapping(mapping.id)}
+                      >
+                        <Trash data-icon="inline-start" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

@@ -16,27 +16,52 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { toast } from "sonner";
 import { saveCompareSelection } from "@/lib/compare-selection";
 import type { RoutePath } from "@/lib/routes";
+import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 
 const DEFAULT_GROUP_GAP_MINUTES = 3;
 const MINUTE_MS = 60 * 1000;
+const LOG_FILTER_STORAGE_KEY = "learn-agent-log-filters";
+
+type StoredLogFilters = {
+  provider?: string;
+  model?: string;
+  search?: string;
+  groupGapMinutes?: number;
+};
+
+function readStoredFilters(): StoredLogFilters {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = window.localStorage.getItem(LOG_FILTER_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as StoredLogFilters;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 export function LogsPage({
   onNavigate,
 }: {
   onNavigate: (path: RoutePath) => void;
 }) {
+  const storedFilters = useMemo(readStoredFilters, []);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
-  const [provider, setProvider] = useState<string>("");
-  const [model, setModel] = useState<string>("");
-  const [search, setSearch] = useState<string>("");
+  const [provider, setProvider] = useState<string>(storedFilters.provider ?? "");
+  const [model, setModel] = useState<string>(storedFilters.model ?? "");
+  const [search, setSearch] = useState<string>(storedFilters.search ?? "");
   const [models, setModels] = useState<string[]>([]);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
   const [viewedId, setViewedId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [groupGapMinutes, setGroupGapMinutes] = useState(DEFAULT_GROUP_GAP_MINUTES);
+  const [groupGapMinutes, setGroupGapMinutes] = useState(
+    storedFilters.groupGapMinutes ?? DEFAULT_GROUP_GAP_MINUTES
+  );
   const [loading, setLoading] = useState(false);
 
   const compareEnabled = selectedIds.length === 2;
@@ -49,6 +74,16 @@ export function LogsPage({
 
     return `Selected ${selectedIds.length} logs. Keep only two to compare.`;
   }, [selectedIds]);
+
+  const selectedLogIndex = useMemo(() => {
+    if (!selectedLog) return -1;
+    return logs.findIndex((log) => log.id === selectedLog.id);
+  }, [logs, selectedLog]);
+  const previousLog = selectedLogIndex > 0 ? logs[selectedLogIndex - 1] : null;
+  const nextLog =
+    selectedLogIndex >= 0 && selectedLogIndex < logs.length - 1
+      ? logs[selectedLogIndex + 1]
+      : null;
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -77,6 +112,13 @@ export function LogsPage({
   useEffect(() => {
     fetchModels().then(setModels).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      LOG_FILTER_STORAGE_KEY,
+      JSON.stringify({ provider, model, search, groupGapMinutes })
+    );
+  }, [groupGapMinutes, model, provider, search]);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -222,7 +264,39 @@ export function LogsPage({
       >
         <SheetContent className="sm:max-w-5xl overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Request Detail #{selectedLog?.id}</SheetTitle>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <SheetTitle>Request Detail #{selectedLog?.id}</SheetTitle>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!previousLog}
+                  onClick={() => {
+                    if (!previousLog) return;
+                    setSelectedLog(previousLog);
+                    setViewedId(previousLog.id);
+                  }}
+                >
+                  <CaretLeft data-icon="inline-start" />
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!nextLog}
+                  onClick={() => {
+                    if (!nextLog) return;
+                    setSelectedLog(nextLog);
+                    setViewedId(nextLog.id);
+                  }}
+                >
+                  Next
+                  <CaretRight data-icon="inline-end" />
+                </Button>
+              </div>
+            </div>
           </SheetHeader>
           {selectedLog && (
             <LogDetail
