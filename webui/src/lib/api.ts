@@ -40,6 +40,7 @@ export interface ProviderConfig {
   provider: ProviderName;
   base_url: string;
   api_key_configured: boolean;
+  api_key_hint: string | null;
   access_key: string | null;
   access_key_configured: boolean;
   default_model: string | null;

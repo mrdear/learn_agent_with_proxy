@@ -152,6 +152,7 @@ export interface ProviderConfigPublic {
   provider: ProviderName;
   base_url: string;
   api_key_configured: boolean;
+  api_key_hint: string | null;
   access_key: string | null;
   access_key_configured: boolean;
   default_model: string | null;
@@ -222,6 +223,16 @@ function stringifyHeaders(value: Record<string, string> | null | undefined): str
     }
   }
   return JSON.stringify(headers);
+}
+
+function createSecretHint(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const prefix = value.match(/^[A-Za-z]{2,}-/)?.[0] ?? "";
+  const suffix = value.length > 4 ? value.slice(-4) : "";
+  return `${prefix}${"*".repeat(12)}${suffix}`;
 }
 
 function createOpenAIExtraHeaders(): Record<string, string> {
@@ -442,10 +453,13 @@ function toPublicProviderConfig(row: ProviderConfigDbRow): ProviderConfigPublic 
     throw new Error(`Unsupported provider config: ${row.provider}`);
   }
 
+  const apiKey = decryptConfigSecret(row.api_key_cipher);
+
   return {
     provider: row.provider,
     base_url: row.base_url,
     api_key_configured: Boolean(row.api_key_cipher),
+    api_key_hint: createSecretHint(apiKey),
     access_key: decryptConfigSecret(row.access_key_cipher),
     access_key_configured: Boolean(row.access_key_hash),
     default_model: row.default_model,

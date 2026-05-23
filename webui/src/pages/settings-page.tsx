@@ -132,17 +132,24 @@ function AccessKeyPanel({
 
 function ProviderUpstreamForm({
   draft,
+  replacingApiKey,
   saving,
   onChange,
+  onReplaceApiKey,
+  onCancelReplaceApiKey,
   onSave,
 }: {
   draft: ProviderConfigDraft;
+  replacingApiKey: boolean;
   saving: boolean;
   onChange: (draft: ProviderConfigDraft) => void;
+  onReplaceApiKey: () => void;
+  onCancelReplaceApiKey: () => void;
   onSave: () => void;
 }) {
+  const editingApiKey = !draft.api_key_configured || replacingApiKey;
   const keyPlaceholder = draft.api_key_configured
-    ? "********"
+    ? "Paste replacement API key"
     : "Paste upstream API key";
 
   return (
@@ -172,15 +179,38 @@ function ProviderUpstreamForm({
       <div className="grid grid-cols-1 gap-3">
         <div className="flex flex-col gap-2">
           <Label htmlFor={`${draft.provider}-api-key`}>Upstream API key</Label>
-          <Input
-            id={`${draft.provider}-api-key`}
-            type="password"
-            value={draft.api_key}
-            placeholder={keyPlaceholder}
-            onChange={(event) =>
-              onChange({ ...draft, api_key: event.target.value, clear_api_key: false })
-            }
-          />
+          {editingApiKey ? (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <Input
+                id={`${draft.provider}-api-key`}
+                type="password"
+                value={draft.api_key}
+                placeholder={keyPlaceholder}
+                autoComplete="off"
+                onChange={(event) =>
+                  onChange({ ...draft, api_key: event.target.value, clear_api_key: false })
+                }
+              />
+              {draft.api_key_configured && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onCancelReplaceApiKey}
+                >
+                  Cancel
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <code className="truncate border border-border/70 bg-background px-2.5 py-2 font-mono text-xs">
+                {draft.api_key_hint ?? "************"}
+              </code>
+              <Button type="button" variant="outline" onClick={onReplaceApiKey}>
+                Replace
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -326,10 +356,13 @@ function ProviderPanel({
   mappingDraft,
   loading,
   savingProvider,
+  replacingApiKey,
   regeneratingAccessKey,
   savingMapping,
   onDraftChange,
   onSaveProvider,
+  onReplaceApiKey,
+  onCancelReplaceApiKey,
   onRegenerateAccessKey,
   onMappingDraftChange,
   onSaveMapping,
@@ -341,10 +374,13 @@ function ProviderPanel({
   mappingDraft: MappingDraft;
   loading: boolean;
   savingProvider: boolean;
+  replacingApiKey: boolean;
   regeneratingAccessKey: boolean;
   savingMapping: boolean;
   onDraftChange: (draft: ProviderConfigDraft) => void;
   onSaveProvider: () => void;
+  onReplaceApiKey: () => void;
+  onCancelReplaceApiKey: () => void;
   onRegenerateAccessKey: () => void;
   onMappingDraftChange: (draft: MappingDraft) => void;
   onSaveMapping: () => void;
@@ -368,8 +404,11 @@ function ProviderPanel({
         />
         <ProviderUpstreamForm
           draft={draft}
+          replacingApiKey={replacingApiKey}
           saving={savingProvider}
           onChange={onDraftChange}
+          onReplaceApiKey={onReplaceApiKey}
+          onCancelReplaceApiKey={onCancelReplaceApiKey}
           onSave={onSaveProvider}
         />
         <details className="group overflow-hidden border border-border/70">
@@ -421,6 +460,7 @@ export function SettingsPage() {
   const [savingProvider, setSavingProvider] = useState<ProviderName | null>(null);
   const [regeneratingProvider, setRegeneratingProvider] = useState<ProviderName | null>(null);
   const [savingMapping, setSavingMapping] = useState<ProviderName | null>(null);
+  const [replacingApiKeyProvider, setReplacingApiKeyProvider] = useState<ProviderName | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadSettings = useCallback(async () => {
@@ -482,6 +522,7 @@ export function SettingsPage() {
         regenerate_access_key: options?.regenerateAccessKey,
       });
       updateDraft(toDraft(updated));
+      setReplacingApiKeyProvider((current) => (current === provider ? null : current));
       toast.success(
         options?.regenerateAccessKey
           ? `${PROVIDER_LABELS[provider]} access key regenerated`
@@ -493,6 +534,14 @@ export function SettingsPage() {
       setSavingProvider(null);
       setRegeneratingProvider(null);
     }
+  };
+
+  const cancelApiKeyReplace = (provider: ProviderName) => {
+    const draft = providerDraftByName.get(provider);
+    if (draft) {
+      updateDraft({ ...draft, api_key: "", clear_api_key: false });
+    }
+    setReplacingApiKeyProvider((current) => (current === provider ? null : current));
   };
 
   const saveMappingForProvider = async (provider: ProviderName) => {
@@ -566,10 +615,13 @@ export function SettingsPage() {
             mappingDraft={mappingDrafts[draft.provider]}
             loading={loading}
             savingProvider={savingProvider === draft.provider}
+            replacingApiKey={replacingApiKeyProvider === draft.provider}
             regeneratingAccessKey={regeneratingProvider === draft.provider}
             savingMapping={savingMapping === draft.provider}
             onDraftChange={updateDraft}
             onSaveProvider={() => void saveProvider(draft.provider)}
+            onReplaceApiKey={() => setReplacingApiKeyProvider(draft.provider)}
+            onCancelReplaceApiKey={() => cancelApiKeyReplace(draft.provider)}
             onRegenerateAccessKey={() =>
               void saveProvider(draft.provider, { regenerateAccessKey: true })
             }
