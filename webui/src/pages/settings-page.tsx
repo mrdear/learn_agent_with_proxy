@@ -3,7 +3,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -107,22 +106,24 @@ function AccessKeyPanel({
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="icon-sm"
+          title="Copy access key"
+          aria-label="Copy access key"
           disabled={!draft.access_key}
           onClick={() => draft.access_key && void copyText(draft.access_key, "Access key")}
         >
           <Copy data-icon="inline-start" />
-          Copy AK
         </Button>
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="icon-sm"
+          title={regenerating ? "Regenerating access key" : "Regenerate access key"}
+          aria-label={regenerating ? "Regenerating access key" : "Regenerate access key"}
           disabled={regenerating}
           onClick={onRegenerate}
         >
           <ArrowsClockwise data-icon="inline-start" />
-          {regenerating ? "Regenerating" : "Regenerate"}
         </Button>
       </div>
     </div>
@@ -140,14 +141,12 @@ function ProviderUpstreamForm({
   onChange: (draft: ProviderConfigDraft) => void;
   onSave: () => void;
 }) {
-  const keyPlaceholder = draft.clear_api_key
-    ? "Will clear on save"
-    : draft.api_key_configured
-      ? "Configured - paste a new key to replace"
-      : "Paste upstream API key";
+  const keyPlaceholder = draft.api_key_configured
+    ? "********"
+    : "Paste upstream API key";
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 border border-border/70 bg-muted/30 p-3">
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(260px,1fr)_minmax(180px,260px)]">
         <div className="flex flex-col gap-2">
           <Label htmlFor={`${draft.provider}-base-url`}>Upstream endpoint</Label>
@@ -170,7 +169,7 @@ function ProviderUpstreamForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(220px,1fr)_auto_auto]">
+      <div className="grid grid-cols-1 gap-3">
         <div className="flex flex-col gap-2">
           <Label htmlFor={`${draft.provider}-api-key`}>Upstream API key</Label>
           <Input
@@ -183,24 +182,6 @@ function ProviderUpstreamForm({
             }
           />
         </div>
-
-        <label className="flex h-8 items-center gap-2 self-end text-xs">
-          <Checkbox
-            checked={draft.enabled}
-            onCheckedChange={(checked) => onChange({ ...draft, enabled: checked === true })}
-          />
-          Enabled
-        </label>
-
-        <label className="flex h-8 items-center gap-2 self-end text-xs">
-          <Checkbox
-            checked={draft.clear_api_key}
-            onCheckedChange={(checked) =>
-              onChange({ ...draft, clear_api_key: checked === true, api_key: "" })
-            }
-          />
-          Clear key
-        </label>
       </div>
 
       <div className="flex justify-end">
@@ -373,16 +354,9 @@ function ProviderPanel({
   return (
     <Card>
       <CardHeader className="border-b border-border/70">
-        <div className="flex min-w-0 flex-wrap items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <CardTitle>{PROVIDER_LABELS[draft.provider]}</CardTitle>
-            <CardDescription className="font-mono">{draft.provider}</CardDescription>
-          </div>
-          <CardAction className="flex flex-wrap items-center gap-2">
-            <Badge variant={draft.enabled ? "secondary" : "outline"}>
-              {draft.enabled ? "Enabled" : "Disabled"}
-            </Badge>
-          </CardAction>
+        <div className="min-w-0">
+          <CardTitle>{PROVIDER_LABELS[draft.provider]}</CardTitle>
+          <CardDescription className="font-mono">{draft.provider}</CardDescription>
         </div>
       </CardHeader>
 

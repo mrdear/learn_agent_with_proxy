@@ -43,11 +43,17 @@ function countResponseToolCalls(items: ParsedResponseItem[]): number {
 
 export function parseLog(log: LogEntry): ParsedLog {
   const effectiveResponseBody = getEffectiveResponseBody(log);
+  const requestBody = parseJsonObject(log.request_body);
+  const responseBody = parseJson(effectiveResponseBody);
+  const streamingChunks =
+    log.is_streaming && log.response_body === effectiveResponseBody
+      ? responseBody
+      : parseJson(log.response_body);
   const input: AdapterInput = {
     log,
-    requestBody: parseJsonObject(log.request_body),
-    responseBody: parseJson(effectiveResponseBody),
-    streamingChunks: parseJson(log.response_body),
+    requestBody,
+    responseBody,
+    streamingChunks,
     effectiveResponseBody,
   };
   const adapter = adapters.find((candidate) => candidate.matches(input)) ?? fallbackAdapter;
@@ -70,9 +76,11 @@ export function parseLog(log: LogEntry): ParsedLog {
     },
     raw: {
       requestHeaders: parseJson(log.request_headers),
-      requestBody: input.requestBody,
-      responseBody: parseJson(log.response_body_finish),
-      streamingChunks: input.streamingChunks,
+      requestBody,
+      responseBody: log.is_streaming
+        ? parseJson(log.response_body_finish)
+        : responseBody,
+      streamingChunks,
     },
   };
 }

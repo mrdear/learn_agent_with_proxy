@@ -23,7 +23,7 @@ const PROXY_URL = "http://localhost:3000";
 const API_BASE_URL = `${PROXY_URL}/v1`;
 
 function accessKeyFor(config?: ProviderConfig): string {
-  return config?.access_key || "lap-configure-this-provider-in-settings";
+  return config?.access_key || "sk-configure-this-provider-in-settings";
 }
 
 function openAISnippet(config?: ProviderConfig): string {

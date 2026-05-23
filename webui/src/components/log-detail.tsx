@@ -27,6 +27,58 @@ interface LogDetailProps {
   onReplayComplete?: (log: LogEntry) => void;
 }
 
+type ParsedJsonBlock = {
+  text: string;
+  parsed: unknown | null;
+};
+
+type LogDetailData = {
+  parsed: ReturnType<typeof parseLog>;
+  responseRawText: string | null;
+  rawBlocks: {
+    relayTarget: ParsedJsonBlock | null;
+    requestHeaders: ParsedJsonBlock | null;
+    requestBody: ParsedJsonBlock | null;
+    responseBody: ParsedJsonBlock | null;
+    streamingChunks: ParsedJsonBlock | null;
+  };
+};
+
+function createJsonBlock(text: string | null, parsed: unknown | null): ParsedJsonBlock | null {
+  if (!text) {
+    return null;
+  }
+
+  return { text, parsed };
+}
+
+function buildLogDetailData(log: LogEntry): LogDetailData {
+  const parsed = parseLog(log);
+  const relayTarget = { upstream_url: log.upstream_url };
+  const responseRawText =
+    log.is_streaming === 1
+      ? log.response_body
+      : (log.response_body_finish ?? parsed.response.effectiveBody);
+
+  return {
+    parsed,
+    responseRawText,
+    rawBlocks: {
+      relayTarget: {
+        text: JSON.stringify(relayTarget, null, 2),
+        parsed: relayTarget,
+      },
+      requestHeaders: createJsonBlock(log.request_headers, parsed.raw.requestHeaders),
+      requestBody: createJsonBlock(log.request_body, parsed.raw.requestBody),
+      responseBody: createJsonBlock(log.response_body_finish, parsed.raw.responseBody),
+      streamingChunks:
+        log.is_streaming === 1
+          ? createJsonBlock(log.response_body, parsed.raw.streamingChunks)
+          : null,
+    },
+  };
+}
+
 function getToolName(tool: ParsedTool): string {
   return tool.name;
 }
@@ -41,24 +93,17 @@ function getToolSchema(tool: ParsedTool): unknown {
 
 // ── Sub-components ──
 
-function JsonBlock({ label, data }: { label: string; data: string | null }) {
-  if (!data) return null;
-
-  let parsed: unknown = null;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    // not valid JSON
-  }
+function JsonBlock({ label, block }: { label: string; block: ParsedJsonBlock | null }) {
+  if (!block) return null;
 
   return (
     <div className="space-y-1.5">
       <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      {parsed !== null && typeof parsed === "object" ? (
-        <JsonViewer data={parsed} />
+      {block.parsed !== null && typeof block.parsed === "object" ? (
+        <JsonViewer data={block.parsed} />
       ) : (
         <pre className="bg-muted rounded-md p-3 text-xs overflow-x-auto max-h-[500px] overflow-y-auto whitespace-pre-wrap break-all">
-          {data}
+          {block.text}
         </pre>
       )}
     </div>
@@ -76,8 +121,8 @@ const roleMeta: Record<string, { bg: string; label: string }> = {
 
 function MessageItem({ msg, index }: { msg: ParsedMessage; index: number }) {
   const meta = roleMeta[msg.role] || { bg: "", label: msg.role };
-  const contentText = stringifyContent(msg.content);
-  const parsedJson = tryParseJsonContent(contentText);
+  const contentText = useMemo(() => stringifyContent(msg.content), [msg.content]);
+  const parsedJson = useMemo(() => tryParseJsonContent(contentText), [contentText]);
   const isJsonContent = parsedJson !== null;
 
   const hasToolCalls = msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
@@ -198,8 +243,8 @@ function ToolsPanel({ tools }: { tools: ParsedTool[] }) {
 function ResponseItem({ item, index }: { item: ParsedResponseItem; index: number }) {
   const role = item.role || (item.kind === "tool_call" ? "function_call" : "assistant");
   const meta = roleMeta[role] || { bg: roleMeta.system.bg, label: role };
-  const contentText = stringifyContent(item.content);
-  const parsedJson = tryParseJsonContent(contentText);
+  const contentText = useMemo(() => stringifyContent(item.content), [item.content]);
+  const parsedJson = useMemo(() => tryParseJsonContent(contentText), [contentText]);
   const isJsonContent = parsedJson !== null;
 
   return (
@@ -268,7 +313,7 @@ function extractToolPayload(item: ParsedResponseItem): {
 }
 
 function ToolCallResponseItem({ item, index }: { item: ParsedResponseItem; index: number }) {
-  const payload = extractToolPayload(item);
+  const payload = useMemo(() => extractToolPayload(item), [item]);
 
   return (
     <div className="overflow-hidden rounded-none border border-border">
@@ -332,28 +377,19 @@ function ProtocolBadge({ protocol }: { protocol: LogProtocol }) {
   return <Badge variant="outline">{label[protocol]}</Badge>;
 }
 
-function RawResponseBlock({ label, data }: { label: string; data: string | null }) {
+function RawResponseBlock({ data }: { data: string | null }) {
   if (!data) {
     return null;
   }
 
-  const parsed = tryParseJsonContent(data);
-
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <Badge variant="outline" className="font-mono">
-          {parsed ? "json" : "text"}
-        </Badge>
+        <p className="text-xs font-medium text-muted-foreground">Raw JSON</p>
       </div>
-      {parsed && (isRecord(parsed) || Array.isArray(parsed)) ? (
-        <JsonViewer data={parsed} />
-      ) : (
-        <pre className="max-h-[520px] overflow-auto rounded-md border border-border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
-          {data}
-        </pre>
-      )}
+      <pre className="max-h-[520px] overflow-auto rounded-md border border-border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
+        {data}
+      </pre>
     </div>
   );
 }
@@ -361,23 +397,21 @@ function RawResponseBlock({ label, data }: { label: string; data: string | null 
 function ResponsePanel({
   items,
   effectiveBody,
-  finalBody,
-  streamingChunks,
+  rawBody,
   protocol,
   hasToolCalls,
 }: {
   items: ParsedResponseItem[];
   effectiveBody: string | null;
-  finalBody: string | null;
-  streamingChunks: string | null;
+  rawBody: string | null;
   protocol: LogProtocol;
   hasToolCalls: boolean;
 }) {
-  const readableText = finalBody || effectiveBody;
+  const readableText = effectiveBody;
   const messageCount = items.filter((item) => item.kind === "message").length;
   const toolCallCount = items.filter((item) => item.kind === "tool_call").length;
 
-  if (!readableText && items.length === 0 && !streamingChunks) {
+  if (!readableText && items.length === 0 && !rawBody) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
         No response body
@@ -419,12 +453,10 @@ function ResponsePanel({
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">Raw</Badge>
-            {streamingChunks && <Badge variant="secondary">Streaming chunks</Badge>}
           </div>
         </div>
-        <div className="flex flex-col gap-4 p-3">
-          <RawResponseBlock label="Response body" data={finalBody || effectiveBody} />
-          <RawResponseBlock label="Streaming chunks" data={streamingChunks} />
+        <div className="p-3">
+          <RawResponseBlock data={rawBody} />
         </div>
       </section>
     </div>
@@ -438,7 +470,8 @@ export function LogDetail({
   showActions = true,
   onReplayComplete,
 }: LogDetailProps) {
-  const parsed = useMemo(() => parseLog(log), [log]);
+  const detail = useMemo(() => buildLogDetailData(log), [log]);
+  const { parsed, rawBlocks, responseRawText } = detail;
   const requestMessages = parsed.request.messages.filter(
     (message) => message.role !== "system" && message.role !== "developer",
   );
@@ -637,20 +670,19 @@ export function LogDetail({
           <ResponsePanel
             items={parsed.response.items}
             effectiveBody={parsed.response.effectiveBody}
-            finalBody={log.response_body_finish}
-            streamingChunks={log.is_streaming === 1 ? log.response_body : null}
+            rawBody={responseRawText}
             protocol={parsed.protocol}
             hasToolCalls={parsed.response.hasToolCalls}
           />
         </TabsContent>
 
         <TabsContent value="raw" className="mt-4 space-y-4">
-          <JsonBlock label="Relay Target" data={JSON.stringify({ upstream_url: log.upstream_url }, null, 2)} />
-          <JsonBlock label="Request Headers" data={log.request_headers} />
-          <JsonBlock label="Request Body" data={log.request_body} />
-          <JsonBlock label="Response Body (Full)" data={log.response_body_finish} />
+          <JsonBlock label="Relay Target" block={rawBlocks.relayTarget} />
+          <JsonBlock label="Request Headers" block={rawBlocks.requestHeaders} />
+          <JsonBlock label="Request Body" block={rawBlocks.requestBody} />
+          <JsonBlock label="Response Body (Full)" block={rawBlocks.responseBody} />
           {log.is_streaming === 1 && (
-            <JsonBlock label="Streaming Chunks" data={log.response_body} />
+            <JsonBlock label="Streaming Chunks" block={rawBlocks.streamingChunks} />
           )}
         </TabsContent>
 

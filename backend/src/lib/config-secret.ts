@@ -33,7 +33,7 @@ export function ensureConfigSecret(): void {
 }
 
 export function createAccessKey(): string {
-  return `lap_${crypto.randomBytes(24).toString("base64url")}`;
+  return `sk-${crypto.randomBytes(24).toString("base64url")}`;
 }
 
 export function hashConfigSecret(value: string): string {
