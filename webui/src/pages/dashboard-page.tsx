@@ -167,13 +167,15 @@ function RecentLogRow({ log }: { log: LogEntry }) {
   const trimmed = summary.length > 120 ? `${summary.slice(0, 120)}...` : summary;
 
   return (
-    <div className="grid min-w-0 gap-3 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 md:grid-cols-[4.25rem_6.5rem_minmax(0,1fr)_4.5rem] md:items-center">
-      <div className="flex items-center gap-2">
+    <div className="grid min-w-0 gap-3 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 md:grid-cols-[5.25rem_8.75rem_minmax(0,1fr)_4.75rem] md:items-center">
+      <div className="flex min-w-0 flex-col items-start gap-1">
         <span className="font-mono text-xs text-muted-foreground">#{log.id}</span>
         <StatusBadge status={log.response_status} />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="secondary">{log.provider}</Badge>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <Badge variant="secondary" className="max-w-full truncate">
+          {log.provider}
+        </Badge>
         {log.is_streaming ? <Badge variant="outline">stream</Badge> : null}
       </div>
       <div className="min-w-0">

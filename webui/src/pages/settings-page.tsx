@@ -20,14 +20,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   deleteModelMapping,
   fetchModelMappings,
   fetchProviderConfigs,
@@ -206,6 +198,141 @@ function MappingProviderSelect({
   );
 }
 
+function MappingConfigurator({
+  draft,
+  loading,
+  saving,
+  onChange,
+  onSave,
+}: {
+  draft: ModelMappingInput;
+  loading: boolean;
+  saving: boolean;
+  onChange: (draft: ModelMappingInput) => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="grid min-w-0 gap-4 border border-primary/15 bg-primary/5 p-3 lg:grid-cols-[220px_minmax(0,1fr)_auto]">
+      <div className="flex min-w-0 flex-col gap-2">
+        <Label>Provider</Label>
+        <MappingProviderSelect
+          value={draft.provider}
+          onChange={(provider) => onChange({ ...draft, provider })}
+        />
+      </div>
+
+      <div className="grid min-w-0 gap-3 md:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-2">
+          <Label htmlFor="mapping-source-model">Request model</Label>
+          <Input
+            id="mapping-source-model"
+            value={draft.source_model}
+            placeholder="gpt-4.1-mini"
+            className="font-mono"
+            onChange={(event) => onChange({ ...draft, source_model: event.target.value })}
+          />
+        </div>
+        <div className="flex min-w-0 flex-col gap-2">
+          <Label htmlFor="mapping-target-model">Upstream model</Label>
+          <Input
+            id="mapping-target-model"
+            value={draft.target_model}
+            placeholder="openai/gpt-4.1-mini"
+            className="font-mono"
+            onChange={(event) => onChange({ ...draft, target_model: event.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2 lg:flex-col lg:items-stretch lg:justify-end">
+        <label className="flex h-8 items-center gap-2 text-xs">
+          <Checkbox
+            checked={draft.enabled}
+            onCheckedChange={(checked) => onChange({ ...draft, enabled: checked === true })}
+          />
+          Enabled
+        </label>
+        <Button
+          type="button"
+          onClick={onSave}
+          disabled={
+            loading ||
+            saving ||
+            !draft.source_model.trim() ||
+            !draft.target_model.trim()
+          }
+        >
+          <Check data-icon="inline-start" />
+          Save mapping
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function MappingList({
+  mappings,
+  onToggle,
+  onDelete,
+}: {
+  mappings: ModelMapping[];
+  onToggle: (mapping: ModelMapping) => void;
+  onDelete: (id: number) => void;
+}) {
+  if (mappings.length === 0) {
+    return (
+      <div className="border border-dashed border-border/80 p-6 text-sm text-muted-foreground">
+        还没有模型映射。保存上面的配置后，会出现在这里。
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col">
+      {mappings.map((mapping) => (
+        <div
+          key={mapping.id}
+          className="grid min-w-0 gap-3 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 lg:grid-cols-[180px_minmax(0,1fr)_auto] lg:items-center"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{PROVIDER_LABELS[mapping.provider]}</Badge>
+            <Badge variant={mapping.enabled ? "outline" : "destructive"}>
+              {mapping.enabled ? "Enabled" : "Disabled"}
+            </Badge>
+          </div>
+          <div className="grid min-w-0 gap-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+            <code className="truncate font-mono text-xs">{mapping.source_model}</code>
+            <span className="hidden text-xs text-muted-foreground md:inline">to</span>
+            <code className="truncate font-mono text-xs text-muted-foreground">
+              {mapping.target_model}
+            </code>
+          </div>
+          <div className="flex items-center gap-1 lg:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => onToggle(mapping)}
+            >
+              {mapping.enabled ? "Disable" : "Enable"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              title="Delete"
+              aria-label="Delete mapping"
+              onClick={() => onDelete(mapping.id)}
+            >
+              <Trash data-icon="inline-start" />
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const [providerDrafts, setProviderDrafts] = useState<ProviderConfigDraft[]>([]);
   const [mappings, setMappings] = useState<ModelMapping[]>([]);
@@ -351,87 +478,18 @@ export function SettingsPage() {
         </CardHeader>
 
         <CardContent className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[190px_minmax(180px,1fr)_minmax(180px,1fr)_auto]">
-            <MappingProviderSelect
-              value={mappingDraft.provider}
-              onChange={(provider) => setMappingDraft({ ...mappingDraft, provider })}
-            />
-            <Input
-              value={mappingDraft.source_model}
-              placeholder="Request model"
-              onChange={(event) =>
-                setMappingDraft({ ...mappingDraft, source_model: event.target.value })
-              }
-            />
-            <Input
-              value={mappingDraft.target_model}
-              placeholder="Upstream model"
-              onChange={(event) =>
-                setMappingDraft({ ...mappingDraft, target_model: event.target.value })
-              }
-            />
-            <Button
-              type="button"
-              onClick={addMapping}
-              disabled={
-                loading ||
-                savingMapping ||
-                !mappingDraft.source_model.trim() ||
-                !mappingDraft.target_model.trim()
-              }
-            >
-              <Check data-icon="inline-start" />
-              Add
-            </Button>
-          </div>
-
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Provider</TableHead>
-                <TableHead>Request model</TableHead>
-                <TableHead>Upstream model</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-[110px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mappings.map((mapping) => (
-                <TableRow key={mapping.id}>
-                  <TableCell>{PROVIDER_LABELS[mapping.provider]}</TableCell>
-                  <TableCell className="font-mono">{mapping.source_model}</TableCell>
-                  <TableCell className="font-mono">{mapping.target_model}</TableCell>
-                  <TableCell>
-                    <Badge variant={mapping.enabled ? "secondary" : "outline"}>
-                      {mapping.enabled ? "Enabled" : "Disabled"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="xs"
-                        onClick={() => void toggleMapping(mapping)}
-                      >
-                        {mapping.enabled ? "Disable" : "Enable"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        title="Delete"
-                        aria-label="Delete mapping"
-                        onClick={() => void removeMapping(mapping.id)}
-                      >
-                        <Trash data-icon="inline-start" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <MappingConfigurator
+            draft={mappingDraft}
+            loading={loading}
+            saving={savingMapping}
+            onChange={setMappingDraft}
+            onSave={() => void addMapping()}
+          />
+          <MappingList
+            mappings={mappings}
+            onToggle={(mapping) => void toggleMapping(mapping)}
+            onDelete={(id) => void removeMapping(id)}
+          />
         </CardContent>
       </Card>
     </div>
