@@ -21,14 +21,24 @@ export type PreparedRelayRequest = {
   model: string | null;
 };
 
+export type RelayProviderConfig = {
+  baseUrl: string;
+  apiKey: string | null;
+  defaultModel: string | null;
+  extraHeaders: Record<string, string>;
+  enabled: boolean;
+  modelMappings: Record<string, string>;
+};
+
 export interface RelayStrategy {
   provider: Provider;
   prepareRelayRequest(
     requestBody: RequestBodyInspection,
-    requestHeaders: Headers
+    requestHeaders: Headers,
+    config: RelayProviderConfig
   ): PreparedRelayRequest;
-  getRelayUrl(request: RelayRequest): Promise<string>;
-  sendRelayRequest(request: RelayRequest): Promise<RelayResponse>;
+  getRelayUrl(request: RelayRequest, config: RelayProviderConfig): Promise<string>;
+  sendRelayRequest(request: RelayRequest, config: RelayProviderConfig): Promise<RelayResponse>;
   extractTokens(data: Record<string, unknown>): Tokens;
   summarizeStream(chunks: unknown[]): StreamSummary;
 }

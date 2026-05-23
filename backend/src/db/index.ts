@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import path from "path";
+import { decryptConfigSecret, encryptConfigSecret } from "../lib/config-secret.js";
 
 const dbPath = process.env.DATABASE_URL || "./proxy.db";
 const resolvedPath = path.resolve(dbPath);
@@ -48,6 +49,33 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS provider_configs (
+    provider TEXT PRIMARY KEY,
+    base_url TEXT NOT NULL,
+    api_key_cipher TEXT,
+    default_model TEXT,
+    extra_headers TEXT,
+    enabled INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS model_mappings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    source_model TEXT NOT NULL,
+    target_model TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(provider, source_model)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_model_mappings_provider
+    ON model_mappings(provider, enabled);
+`);
+
 function ensureColumn(column: string, ddl: string): void {
   const columns = db.prepare("PRAGMA table_info(logs)").all() as { name: string }[];
   if (!columns.some((col) => col.name === column)) {
@@ -60,6 +88,30 @@ ensureColumn("cache_read_tokens", "ALTER TABLE logs ADD COLUMN cache_read_tokens
 ensureColumn("cache_creation_tokens", "ALTER TABLE logs ADD COLUMN cache_creation_tokens INTEGER");
 ensureColumn("thinking_tokens", "ALTER TABLE logs ADD COLUMN thinking_tokens INTEGER");
 ensureColumn("upstream_url", "ALTER TABLE logs ADD COLUMN upstream_url TEXT");
+
+function ensureProviderConfigColumn(column: string, ddl: string): void {
+  const columns = db.prepare("PRAGMA table_info(provider_configs)").all() as { name: string }[];
+  if (!columns.some((col) => col.name === column)) {
+    db.exec(ddl);
+  }
+}
+
+function ensureModelMappingColumn(column: string, ddl: string): void {
+  const columns = db.prepare("PRAGMA table_info(model_mappings)").all() as { name: string }[];
+  if (!columns.some((col) => col.name === column)) {
+    db.exec(ddl);
+  }
+}
+
+ensureProviderConfigColumn("api_key_cipher", "ALTER TABLE provider_configs ADD COLUMN api_key_cipher TEXT");
+ensureProviderConfigColumn("default_model", "ALTER TABLE provider_configs ADD COLUMN default_model TEXT");
+ensureProviderConfigColumn("extra_headers", "ALTER TABLE provider_configs ADD COLUMN extra_headers TEXT");
+ensureProviderConfigColumn("enabled", "ALTER TABLE provider_configs ADD COLUMN enabled INTEGER DEFAULT 1");
+ensureProviderConfigColumn("created_at", "ALTER TABLE provider_configs ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP");
+ensureProviderConfigColumn("updated_at", "ALTER TABLE provider_configs ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP");
+ensureModelMappingColumn("enabled", "ALTER TABLE model_mappings ADD COLUMN enabled INTEGER DEFAULT 1");
+ensureModelMappingColumn("created_at", "ALTER TABLE model_mappings ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP");
+ensureModelMappingColumn("updated_at", "ALTER TABLE model_mappings ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP");
 
 export interface LogRow {
   id: number;
@@ -85,6 +137,142 @@ export interface LogRow {
   source_log_id: number | null;
   error: string | null;
   created_at: string;
+}
+
+export type ProviderName = "openai" | "anthropic" | "openai-responses";
+
+export interface ProviderConfigPublic {
+  provider: ProviderName;
+  base_url: string;
+  api_key_configured: boolean;
+  default_model: string | null;
+  extra_headers: Record<string, string>;
+  enabled: boolean;
+  updated_at: string | null;
+}
+
+export interface ProviderRuntimeConfig {
+  provider: ProviderName;
+  baseUrl: string;
+  apiKey: string | null;
+  defaultModel: string | null;
+  extraHeaders: Record<string, string>;
+  enabled: boolean;
+  modelMappings: Record<string, string>;
+}
+
+export interface ModelMappingRow {
+  id: number;
+  provider: ProviderName;
+  source_model: string;
+  target_model: string;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+}
+
+const providerNames = ["openai", "openai-responses", "anthropic"] as const;
+
+export function isProviderName(value: string): value is ProviderName {
+  return providerNames.includes(value as ProviderName);
+}
+
+function normalizeOptionalText(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function parseHeadersJson(value: string | null): Record<string, string> {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    const headers: Record<string, string> = {};
+    for (const [key, headerValue] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof headerValue === "string" && key.trim() && headerValue.trim()) {
+        headers[key.trim()] = headerValue.trim();
+      }
+    }
+    return headers;
+  } catch {
+    return {};
+  }
+}
+
+function stringifyHeaders(value: Record<string, string> | null | undefined): string {
+  const headers: Record<string, string> = {};
+  for (const [key, headerValue] of Object.entries(value ?? {})) {
+    if (key.trim() && headerValue.trim()) {
+      headers[key.trim()] = headerValue.trim();
+    }
+  }
+  return JSON.stringify(headers);
+}
+
+function createOpenAIExtraHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const referer = process.env.OPENAI_HTTP_REFERER?.trim();
+  const title = process.env.OPENAI_TITLE?.trim();
+
+  if (referer) {
+    headers["HTTP-Referer"] = referer;
+  }
+  if (title) {
+    headers["X-Title"] = title;
+  }
+
+  return headers;
+}
+
+const seedProviderConfig = db.prepare(`
+  INSERT OR IGNORE INTO provider_configs
+    (provider, base_url, api_key_cipher, default_model, extra_headers, enabled)
+  VALUES
+    (@provider, @base_url, @api_key_cipher, @default_model, @extra_headers, 1)
+`);
+
+for (const config of [
+  {
+    provider: "openai",
+    base_url: process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com",
+    api_key: normalizeOptionalText(process.env.OPENAI_API_KEY),
+    default_model: normalizeOptionalText(process.env.OPENAI_DEFAULT_MODEL),
+    extra_headers: createOpenAIExtraHeaders(),
+  },
+  {
+    provider: "openai-responses",
+    base_url: process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com",
+    api_key: normalizeOptionalText(process.env.OPENAI_API_KEY),
+    default_model: normalizeOptionalText(process.env.OPENAI_DEFAULT_MODEL),
+    extra_headers: createOpenAIExtraHeaders(),
+  },
+  {
+    provider: "anthropic",
+    base_url: process.env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com",
+    api_key: normalizeOptionalText(process.env.ANTHROPIC_API_KEY),
+    default_model: null,
+    extra_headers: {},
+  },
+] satisfies Array<{
+  provider: ProviderName;
+  base_url: string;
+  api_key: string | null;
+  default_model: string | null;
+  extra_headers: Record<string, string>;
+}>) {
+  seedProviderConfig.run({
+    provider: config.provider,
+    base_url: config.base_url,
+    api_key_cipher: encryptConfigSecret(config.api_key),
+    default_model: config.default_model,
+    extra_headers: stringifyHeaders(config.extra_headers),
+  });
 }
 
 const insertLog = db.prepare(`
@@ -198,6 +386,184 @@ export function clearLogs(): number {
 export function getModels(): string[] {
   const rows = db.prepare("SELECT DISTINCT model FROM logs WHERE model IS NOT NULL ORDER BY model").all() as { model: string }[];
   return rows.map((r) => r.model);
+}
+
+type ProviderConfigDbRow = {
+  provider: string;
+  base_url: string;
+  api_key_cipher: string | null;
+  default_model: string | null;
+  extra_headers: string | null;
+  enabled: number;
+  updated_at: string | null;
+};
+
+function toPublicProviderConfig(row: ProviderConfigDbRow): ProviderConfigPublic {
+  if (!isProviderName(row.provider)) {
+    throw new Error(`Unsupported provider config: ${row.provider}`);
+  }
+
+  return {
+    provider: row.provider,
+    base_url: row.base_url,
+    api_key_configured: Boolean(row.api_key_cipher),
+    default_model: row.default_model,
+    extra_headers: parseHeadersJson(row.extra_headers),
+    enabled: row.enabled === 1,
+    updated_at: row.updated_at,
+  };
+}
+
+export function getProviderConfigs(): ProviderConfigPublic[] {
+  const rows = db
+    .prepare("SELECT * FROM provider_configs ORDER BY provider")
+    .all() as ProviderConfigDbRow[];
+  return rows.map(toPublicProviderConfig);
+}
+
+export function getProviderConfig(provider: ProviderName): ProviderRuntimeConfig | null {
+  const row = db
+    .prepare("SELECT * FROM provider_configs WHERE provider = @provider")
+    .get({ provider }) as ProviderConfigDbRow | undefined;
+
+  if (!row || !isProviderName(row.provider)) {
+    return null;
+  }
+
+  const mappings = db
+    .prepare(
+      `SELECT source_model, target_model
+       FROM model_mappings
+       WHERE provider = @provider AND enabled = 1`
+    )
+    .all({ provider }) as Array<{ source_model: string; target_model: string }>;
+
+  return {
+    provider: row.provider,
+    baseUrl: row.base_url,
+    apiKey: decryptConfigSecret(row.api_key_cipher),
+    defaultModel: row.default_model,
+    extraHeaders: parseHeadersJson(row.extra_headers),
+    enabled: row.enabled === 1,
+    modelMappings: Object.fromEntries(
+      mappings.map((mapping) => [mapping.source_model, mapping.target_model])
+    ),
+  };
+}
+
+export function updateProviderConfig(data: {
+  provider: ProviderName;
+  base_url: string;
+  default_model?: string | null;
+  extra_headers?: Record<string, string>;
+  enabled: boolean;
+  api_key?: string | null;
+  clear_api_key?: boolean;
+}): ProviderConfigPublic {
+  const current = db
+    .prepare("SELECT * FROM provider_configs WHERE provider = @provider")
+    .get({ provider: data.provider }) as ProviderConfigDbRow | undefined;
+
+  const apiKeyCipher = data.clear_api_key
+    ? null
+    : data.api_key !== undefined
+      ? encryptConfigSecret(normalizeOptionalText(data.api_key))
+      : (current?.api_key_cipher ?? null);
+
+  db.prepare(
+    `INSERT INTO provider_configs
+       (provider, base_url, api_key_cipher, default_model, extra_headers, enabled, updated_at)
+     VALUES
+       (@provider, @base_url, @api_key_cipher, @default_model, @extra_headers, @enabled, CURRENT_TIMESTAMP)
+     ON CONFLICT(provider) DO UPDATE SET
+       base_url = excluded.base_url,
+       api_key_cipher = excluded.api_key_cipher,
+       default_model = excluded.default_model,
+       extra_headers = excluded.extra_headers,
+       enabled = excluded.enabled,
+       updated_at = CURRENT_TIMESTAMP`
+  ).run({
+    provider: data.provider,
+    base_url: data.base_url.trim(),
+    api_key_cipher: apiKeyCipher,
+    default_model: normalizeOptionalText(data.default_model),
+    extra_headers: stringifyHeaders(data.extra_headers),
+    enabled: data.enabled ? 1 : 0,
+  });
+
+  const updated = db
+    .prepare("SELECT * FROM provider_configs WHERE provider = @provider")
+    .get({ provider: data.provider }) as ProviderConfigDbRow;
+  return toPublicProviderConfig(updated);
+}
+
+export function getModelMappings(provider?: ProviderName): ModelMappingRow[] {
+  if (provider) {
+    return db
+      .prepare("SELECT * FROM model_mappings WHERE provider = @provider ORDER BY source_model")
+      .all({ provider }) as ModelMappingRow[];
+  }
+
+  return db
+    .prepare("SELECT * FROM model_mappings ORDER BY provider, source_model")
+    .all() as ModelMappingRow[];
+}
+
+export function saveModelMapping(data: {
+  id?: number;
+  provider: ProviderName;
+  source_model: string;
+  target_model: string;
+  enabled: boolean;
+}): ModelMappingRow {
+  if (data.id) {
+    db.prepare(
+      `UPDATE model_mappings SET
+        provider = @provider,
+        source_model = @source_model,
+        target_model = @target_model,
+        enabled = @enabled,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = @id`
+    ).run({
+      id: data.id,
+      provider: data.provider,
+      source_model: data.source_model.trim(),
+      target_model: data.target_model.trim(),
+      enabled: data.enabled ? 1 : 0,
+    });
+  } else {
+    db.prepare(
+      `INSERT INTO model_mappings
+        (provider, source_model, target_model, enabled, updated_at)
+       VALUES
+        (@provider, @source_model, @target_model, @enabled, CURRENT_TIMESTAMP)
+       ON CONFLICT(provider, source_model) DO UPDATE SET
+        target_model = excluded.target_model,
+        enabled = excluded.enabled,
+        updated_at = CURRENT_TIMESTAMP`
+    ).run({
+      provider: data.provider,
+      source_model: data.source_model.trim(),
+      target_model: data.target_model.trim(),
+      enabled: data.enabled ? 1 : 0,
+    });
+  }
+
+  return db
+    .prepare(
+      `SELECT * FROM model_mappings
+       WHERE provider = @provider AND source_model = @source_model`
+    )
+    .get({
+      provider: data.provider,
+      source_model: data.source_model.trim(),
+    }) as ModelMappingRow;
+}
+
+export function deleteModelMapping(id: number): number {
+  const result = db.prepare("DELETE FROM model_mappings WHERE id = @id").run({ id });
+  return result.changes;
 }
 
 export default db;

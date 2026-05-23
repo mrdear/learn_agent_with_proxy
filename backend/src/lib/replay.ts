@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { getLogById, type LogRow } from "../db/index.js";
+import { getLogById, getProviderConfig, type LogRow } from "../db/index.js";
 import {
   collectSseChunks,
   inspectRequestBody,
@@ -103,10 +103,22 @@ export async function replayLogById(
   const requestUrl = buildReplayRequestUrl(endpoint);
   const requestHeaders = sanitizeHeaders(parseHeaders(original.request_headers));
   const strategy = getRelayStrategy(provider);
+  const providerConfig = getProviderConfig(provider);
   const startTime = Date.now();
   const requestTime = new Date(startTime).toISOString();
   const bodyInspection = inspectRequestBody(requestBody);
-  const relayRequest = strategy.prepareRelayRequest(bodyInspection, parseHeaders(original.request_headers));
+  if (!providerConfig?.enabled) {
+    throw new ReplayError(
+      providerConfig ? `Provider disabled: ${provider}` : `Provider not configured: ${provider}`,
+      400
+    );
+  }
+
+  const relayRequest = strategy.prepareRelayRequest(
+    bodyInspection,
+    parseHeaders(original.request_headers),
+    providerConfig
+  );
   const isStreaming = bodyInspection.json ? bodyInspection.json.stream === true : original.is_streaming === 1;
   const model = relayRequest.model ?? original.model;
   const relayInput = {
@@ -121,7 +133,7 @@ export async function replayLogById(
   const requestId = crypto.randomUUID();
 
   try {
-    upstreamUrl = await strategy.getRelayUrl(relayInput);
+    upstreamUrl = await strategy.getRelayUrl(relayInput, providerConfig);
   } catch {
     upstreamUrl = null;
   }
@@ -144,7 +156,7 @@ export async function replayLogById(
   const replayedLogId = getLogIdForRequest(requestId);
 
   try {
-    const { response, targetUrl } = await strategy.sendRelayRequest(relayInput);
+    const { response, targetUrl } = await strategy.sendRelayRequest(relayInput, providerConfig);
     if (!upstreamUrl) {
       upstreamUrl = targetUrl;
     }

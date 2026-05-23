@@ -29,18 +29,14 @@ http://localhost:3000/v1
 ```env
 PORT=3000
 DATABASE_URL=./proxy.db
-
-OPENAI_BASE_URL=https://api.openai.com
-ANTHROPIC_BASE_URL=https://api.anthropic.com
-
-# 可选，也可以由客户端请求头透传
-# OPENAI_API_KEY=sk-xxx
-# ANTHROPIC_API_KEY=sk-ant-xxx
+PROXY_CONFIG_SECRET=use-a-long-random-local-secret
 ```
 
-`OPENAI_BASE_URL` 和 `ANTHROPIC_BASE_URL` 可以指向官方接口、第三方兼容代理或自建服务。上游地址可带版本路径，比如 `https://api.openai.com/v1` 或 `https://openrouter.ai/api/v1`。
+Provider 的 endpoint、API key、默认模型和模型映射在 Web UI 的 Settings 页面维护，写入 SQLite。API key 会以 AES-256-GCM 密文保存；加密主密钥来自 `PROXY_CONFIG_SECRET`，如果没有设置，后端会生成 `backend/.proxy-secret`。
 
-每条代理日志会记录 `upstream_url`，用于核对实际转发地址和当前环境变量是否一致。
+首次启动时，如果旧的 `OPENAI_BASE_URL`、`ANTHROPIC_BASE_URL`、`OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 还存在，会只用来初始化空库里的默认 provider 配置。已有 DB 配置优先级更高。
+
+每条代理日志会记录 `upstream_url`，用于核对实际转发地址和当前 provider 配置是否一致。
 
 ## 前端 UI
 

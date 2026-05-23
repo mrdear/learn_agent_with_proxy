@@ -8,6 +8,7 @@ import {
 import { cloneResponseHeaders, sanitizeHeaders } from "../lib/http.js";
 import { getRelayStrategy, type RelayStrategy } from "../lib/strategies/index.js";
 import { proxyEventBus } from "../events/index.js";
+import { getProviderConfig } from "../db/index.js";
 
 function isBodyMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
@@ -58,6 +59,7 @@ proxy.all("/v1/*", async (c) => {
   const rawHeaders = c.req.raw.headers;
   const provider = detectProvider(rawHeaders, requestUrl.pathname);
   const strategy = getRelayStrategy(provider);
+  const providerConfig = getProviderConfig(provider);
   const logHeaders = sanitizeHeaders(rawHeaders);
 
   let requestBody: string | null = null;
@@ -68,7 +70,34 @@ proxy.all("/v1/*", async (c) => {
     bodyInspection = inspectRequestBody(requestBody);
   }
 
-  const relayRequest = strategy.prepareRelayRequest(bodyInspection, rawHeaders);
+  if (!providerConfig?.enabled) {
+    const message = providerConfig ? `Provider disabled: ${provider}` : `Provider not configured: ${provider}`;
+
+    proxyEventBus.emit("proxy:request", {
+      requestId,
+      provider,
+      endpoint: requestPath,
+      upstreamUrl: null,
+      method,
+      headers: logHeaders,
+      body: requestBody,
+      model: bodyInspection.model,
+      isStreaming: bodyInspection.isStreaming,
+      requestTime,
+    });
+
+    proxyEventBus.emit("proxy:error", {
+      requestId,
+      status: 400,
+      error: message,
+      responseTime: new Date().toISOString(),
+      durationMs: Date.now() - startTime,
+    });
+
+    return c.json({ error: "Proxy configuration error", message }, 400);
+  }
+
+  const relayRequest = strategy.prepareRelayRequest(bodyInspection, rawHeaders, providerConfig);
   const relayInput = {
     path: requestPath,
     method,
@@ -79,7 +108,7 @@ proxy.all("/v1/*", async (c) => {
   let upstreamUrl: string | null = null;
 
   try {
-    upstreamUrl = await strategy.getRelayUrl(relayInput);
+    upstreamUrl = await strategy.getRelayUrl(relayInput, providerConfig);
     console.log(`[PROXY] upstream ${upstreamUrl}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -122,7 +151,7 @@ proxy.all("/v1/*", async (c) => {
   });
 
   try {
-    const { response } = await strategy.sendRelayRequest(relayInput);
+    const { response } = await strategy.sendRelayRequest(relayInput, providerConfig);
 
     if (bodyInspection.isStreaming && response.body) {
       const [clientBody, logBody] = response.body.tee();

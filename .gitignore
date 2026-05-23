@@ -29,3 +29,4 @@ dist-ssr
 *.sw?
 *.iml
 .env
+.proxy-secret

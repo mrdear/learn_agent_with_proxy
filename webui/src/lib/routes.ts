@@ -1,7 +1,7 @@
 import type { Icon } from "@phosphor-icons/react";
-import { ArrowsLeftRight, FileText, House } from "@phosphor-icons/react";
+import { ArrowsLeftRight, FileText, GearSix, House } from "@phosphor-icons/react";
 
-export type RoutePath = "/" | "/logs" | "/compare";
+export type RoutePath = "/" | "/logs" | "/compare" | "/settings";
 
 export type AppRoute = {
   path: RoutePath;
@@ -29,6 +29,12 @@ export const appRoutes = [
     description: "Side-by-side log analysis",
     icon: ArrowsLeftRight,
   },
+  {
+    path: "/settings" as const,
+    label: "Settings",
+    description: "Provider endpoints and model mappings",
+    icon: GearSix,
+  },
 ] as const satisfies readonly AppRoute[];
 
 export function getRouteMeta(pathname: RoutePath) {
@@ -42,6 +48,10 @@ export function normalizeRoute(pathname: string): RoutePath {
 
   if (pathname === "/compare" || pathname.startsWith("/compare/")) {
     return "/compare";
+  }
+
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) {
+    return "/settings";
   }
 
   return "/";

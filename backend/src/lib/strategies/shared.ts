@@ -1,16 +1,6 @@
 import { sanitizeHeaders } from "../http.js";
-import { type RequestBodyInspection } from "../proxy.js";
-import type { RelayMethod, RelayRequest, RelayResponse } from "./types.js";
-
-export const OPENAI_BASE_URL =
-  process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com";
-export const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim() || "proxy";
-export const OPENAI_DEFAULT_MODEL = process.env.OPENAI_DEFAULT_MODEL?.trim() || "";
-export const OPENAI_HTTP_REFERER = process.env.OPENAI_HTTP_REFERER?.trim() || "";
-export const OPENAI_TITLE = process.env.OPENAI_TITLE?.trim() || "Learn Agent With Proxy";
-
-export const ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com";
-export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY?.trim() || "proxy";
+import { type Provider, type RequestBodyInspection } from "../proxy.js";
+import type { RelayMethod, RelayProviderConfig, RelayRequest, RelayResponse } from "./types.js";
 
 export function setHeader(headers: Record<string, string>, name: string, value: string): void {
   for (const key of Object.keys(headers)) {
@@ -53,15 +43,70 @@ export function cloneJsonBody(body: Record<string, unknown>): Record<string, unk
   return { ...body };
 }
 
-export function prepareOpenAIHeaders(requestHeaders: Headers): Record<string, string> {
-  const relayHeaders = sanitizeHeaders(requestHeaders);
+function getHeader(headers: Record<string, string>, name: string): string | null {
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === name.toLowerCase());
+  return entry?.[1] ?? null;
+}
 
-  if (OPENAI_HTTP_REFERER) {
-    setHeader(relayHeaders, "HTTP-Referer", OPENAI_HTTP_REFERER);
+export function getOpenAIApiKey(
+  config: RelayProviderConfig,
+  headers: Record<string, string>
+): string {
+  if (config.apiKey) {
+    return config.apiKey;
   }
 
-  if (OPENAI_TITLE) {
-    setHeader(relayHeaders, "X-Title", OPENAI_TITLE);
+  const authorization = getHeader(headers, "authorization");
+  if (authorization?.toLowerCase().startsWith("bearer ")) {
+    return authorization.slice(7).trim() || "proxy";
+  }
+
+  return "proxy";
+}
+
+export function getAnthropicApiKey(
+  config: RelayProviderConfig,
+  headers: Record<string, string>
+): string {
+  if (config.apiKey) {
+    return config.apiKey;
+  }
+
+  return getHeader(headers, "x-api-key") || "proxy";
+}
+
+function applyConfiguredHeaders(
+  headers: Record<string, string>,
+  extraHeaders: Record<string, string>
+): void {
+  for (const [key, value] of Object.entries(extraHeaders)) {
+    setHeader(headers, key, value);
+  }
+}
+
+export function prepareOpenAIHeaders(
+  requestHeaders: Headers,
+  config: RelayProviderConfig
+): Record<string, string> {
+  const relayHeaders = sanitizeHeaders(requestHeaders);
+  applyConfiguredHeaders(relayHeaders, config.extraHeaders);
+
+  if (config.apiKey) {
+    setHeader(relayHeaders, "Authorization", `Bearer ${config.apiKey}`);
+  }
+
+  return relayHeaders;
+}
+
+export function prepareAnthropicHeaders(
+  requestHeaders: Headers,
+  config: RelayProviderConfig
+): Record<string, string> {
+  const relayHeaders = sanitizeHeaders(requestHeaders);
+  applyConfiguredHeaders(relayHeaders, config.extraHeaders);
+
+  if (config.apiKey) {
+    setHeader(relayHeaders, "x-api-key", config.apiKey);
   }
 
   return relayHeaders;
@@ -69,16 +114,29 @@ export function prepareOpenAIHeaders(requestHeaders: Headers): Record<string, st
 
 export function prepareRelayBody(
   requestBody: RequestBodyInspection,
-  rewriteModel?: boolean
+  provider: Provider,
+  config: RelayProviderConfig
 ): { body: unknown; model: string | null } {
   const currentModel = requestBody.model?.trim() || null;
+  const mappedModel = currentModel ? config.modelMappings[currentModel] : null;
+  const defaultModel = config.defaultModel?.trim() || null;
 
   if (requestBody.json) {
     const body = cloneJsonBody(requestBody.json);
 
-    if (rewriteModel && OPENAI_DEFAULT_MODEL && shouldRewriteModel(currentModel)) {
-      body.model = OPENAI_DEFAULT_MODEL;
-      return { body, model: OPENAI_DEFAULT_MODEL };
+    if (mappedModel) {
+      body.model = mappedModel;
+      return { body, model: mappedModel };
+    }
+
+    if (
+      defaultModel &&
+      (provider === "openai" || provider === "openai-responses"
+        ? shouldRewriteModel(currentModel)
+        : !currentModel)
+    ) {
+      body.model = defaultModel;
+      return { body, model: defaultModel };
     }
 
     return { body, model: currentModel };

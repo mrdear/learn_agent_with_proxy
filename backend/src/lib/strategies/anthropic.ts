@@ -1,20 +1,21 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { sanitizeHeaders } from "../http.js";
 import type { RequestBodyInspection, StreamSummary, Tokens } from "../proxy.js";
 import {
-  ANTHROPIC_API_KEY,
-  ANTHROPIC_BASE_URL,
+  getAnthropicApiKey,
   getSdkTargetUrl,
+  prepareAnthropicHeaders,
   prepareRelayBody,
   readNumber,
   sendSdkRequest,
 } from "./shared.js";
-import type { RelayStrategy, RelayRequest } from "./types.js";
+import type { RelayProviderConfig, RelayStrategy, RelayRequest } from "./types.js";
 
-const anthropicClient = new Anthropic({
-  baseURL: ANTHROPIC_BASE_URL,
-  apiKey: ANTHROPIC_API_KEY,
-});
+function createAnthropicClient(config: RelayProviderConfig, headers: Record<string, string>): Anthropic {
+  return new Anthropic({
+    baseURL: config.baseUrl,
+    apiKey: getAnthropicApiKey(config, headers),
+  });
+}
 
 function extractAnthropicTokens(data: Record<string, unknown>): Tokens {
   const usage = data.usage as Record<string, unknown> | undefined;
@@ -63,20 +64,24 @@ function summarizeAnthropicStream(chunks: unknown[]): StreamSummary {
 
 export const anthropicStrategy: RelayStrategy = {
   provider: "anthropic",
-  prepareRelayRequest(requestBody: RequestBodyInspection, requestHeaders: Headers) {
-    const prepared = prepareRelayBody(requestBody);
+  prepareRelayRequest(
+    requestBody: RequestBodyInspection,
+    requestHeaders: Headers,
+    config: RelayProviderConfig
+  ) {
+    const prepared = prepareRelayBody(requestBody, "anthropic", config);
 
     return {
-      headers: sanitizeHeaders(requestHeaders),
+      headers: prepareAnthropicHeaders(requestHeaders, config),
       body: prepared.body,
       model: prepared.model,
     };
   },
-  getRelayUrl(request: RelayRequest) {
-    return getSdkTargetUrl(anthropicClient, request, ANTHROPIC_BASE_URL);
+  getRelayUrl(request: RelayRequest, config: RelayProviderConfig) {
+    return getSdkTargetUrl(createAnthropicClient(config, request.headers), request, config.baseUrl);
   },
-  sendRelayRequest(request: RelayRequest) {
-    return sendSdkRequest(anthropicClient, request, ANTHROPIC_BASE_URL);
+  sendRelayRequest(request: RelayRequest, config: RelayProviderConfig) {
+    return sendSdkRequest(createAnthropicClient(config, request.headers), request, config.baseUrl);
   },
   extractTokens(data) {
     return extractAnthropicTokens(data);

@@ -7,6 +7,9 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import path from "path";
 import fs from "fs";
+import { ensureConfigSecret } from "./lib/config-secret.js";
+
+ensureConfigSecret();
 
 // Initialize database (side effect: creates table)
 import "./db/index.js";
@@ -27,7 +30,7 @@ app.use("/api/*", cors());
 // API routes
 app.route("/api", api);
 
-// Proxy relay routes (OpenAI / Anthropic inputs, OpenRouter upstream when enabled)
+// Proxy relay routes (OpenAI / Anthropic inputs, DB-configured upstreams)
 app.route("/", proxy);
 
 // Static file serving - serve webui build output
@@ -66,7 +69,7 @@ serve(
   (info) => {
     console.log(`Proxy server running on http://localhost:${info.port}`);
     console.log(`Web UI: http://localhost:${info.port}/`);
-    console.log(`Relay modes: OpenAI mode (OpenRouter when configured) and Anthropic mode`);
+    console.log(`Relay modes: DB-configured OpenAI, Responses, and Anthropic upstreams`);
     console.log(`OpenAI route: http://localhost:${info.port}/v1/chat/completions`);
     console.log(`Anthropic route: http://localhost:${info.port}/v1/messages`);
   }

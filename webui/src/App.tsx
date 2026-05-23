@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { ComparePage } from "@/pages/compare-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { LogsPage } from "@/pages/logs-page";
+import { SettingsPage } from "@/pages/settings-page";
 import { getRouteMeta, normalizeRoute, type RoutePath } from "@/lib/routes";
 
 function useRouteState() {
@@ -53,6 +54,8 @@ function App() {
         <LogsPage onNavigate={navigate} />
       ) : pathname === "/compare" ? (
         <ComparePage onNavigate={navigate} />
+      ) : pathname === "/settings" ? (
+        <SettingsPage />
       ) : (
         <DashboardPage onNavigate={navigate} />
       )}

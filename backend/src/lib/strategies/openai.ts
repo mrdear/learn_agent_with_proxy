@@ -1,21 +1,21 @@
 import OpenAI from "openai";
 import type { RequestBodyInspection, StreamSummary, Tokens } from "../proxy.js";
 import {
-  OPENAI_API_KEY,
-  OPENAI_BASE_URL,
-  OPENAI_DEFAULT_MODEL,
+  getOpenAIApiKey,
   getSdkTargetUrl,
   prepareOpenAIHeaders,
   prepareRelayBody,
   readNumber,
   sendSdkRequest,
 } from "./shared.js";
-import type { RelayStrategy, RelayRequest } from "./types.js";
+import type { RelayProviderConfig, RelayStrategy, RelayRequest } from "./types.js";
 
-const relayClient = new OpenAI({
-  baseURL: OPENAI_BASE_URL,
-  apiKey: OPENAI_API_KEY,
-});
+function createRelayClient(config: RelayProviderConfig, headers: Record<string, string>): OpenAI {
+  return new OpenAI({
+    baseURL: config.baseUrl,
+    apiKey: getOpenAIApiKey(config, headers),
+  });
+}
 
 function extractOpenAITokens(data: Record<string, unknown>): Tokens {
   const usage = data.usage as Record<string, unknown> | undefined;
@@ -57,9 +57,13 @@ function summarizeOpenAIStream(chunks: unknown[]): StreamSummary {
 
 export const openaiStrategy: RelayStrategy = {
   provider: "openai",
-  prepareRelayRequest(requestBody: RequestBodyInspection, requestHeaders: Headers) {
-    const headers = prepareOpenAIHeaders(requestHeaders);
-    const prepared = prepareRelayBody(requestBody, Boolean(OPENAI_DEFAULT_MODEL));
+  prepareRelayRequest(
+    requestBody: RequestBodyInspection,
+    requestHeaders: Headers,
+    config: RelayProviderConfig
+  ) {
+    const headers = prepareOpenAIHeaders(requestHeaders, config);
+    const prepared = prepareRelayBody(requestBody, "openai", config);
 
     return {
       headers,
@@ -67,11 +71,11 @@ export const openaiStrategy: RelayStrategy = {
       model: prepared.model,
     };
   },
-  getRelayUrl(request: RelayRequest) {
-    return getSdkTargetUrl(relayClient, request, OPENAI_BASE_URL);
+  getRelayUrl(request: RelayRequest, config: RelayProviderConfig) {
+    return getSdkTargetUrl(createRelayClient(config, request.headers), request, config.baseUrl);
   },
-  sendRelayRequest(request: RelayRequest) {
-    return sendSdkRequest(relayClient, request, OPENAI_BASE_URL);
+  sendRelayRequest(request: RelayRequest, config: RelayProviderConfig) {
+    return sendSdkRequest(createRelayClient(config, request.headers), request, config.baseUrl);
   },
   extractTokens(data) {
     return extractOpenAITokens(data);

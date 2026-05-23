@@ -56,9 +56,7 @@ const CURL_SNIPPET = `curl http://localhost:3000/v1/chat/completions \\
 
 const BACKEND_ENV_SNIPPET = `PORT=3000
 DATABASE_URL=./proxy.db
-OPENAI_API_KEY=sk-your-openrouter-key
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
-OPENAI_DEFAULT_MODEL=gpt-4.1-mini`;
+PROXY_CONFIG_SECRET=use-a-long-random-local-secret`;
 
 function CopyButton({ text, label = "复制" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -340,6 +338,13 @@ export function DashboardPage({
                 onClick={() => onNavigate("/compare")}
               >
                 响应对比
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onNavigate("/settings")}
+              >
+                Provider 配置
               </Button>
               <CopyButton text={API_BASE_URL} label="复制 baseURL" />
             </div>
