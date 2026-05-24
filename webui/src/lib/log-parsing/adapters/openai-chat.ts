@@ -13,6 +13,11 @@ function parseMessages(body: Record<string, unknown> | null): ParsedMessage[] {
   return body.messages as ParsedMessage[];
 }
 
+function isModelsEndpoint(endpoint: string): boolean {
+  const pathname = new URL(endpoint, "http://proxy.local").pathname;
+  return pathname === "/v1/models" || pathname.startsWith("/v1/models/");
+}
+
 function parseSystemPrompt(messages: ParsedMessage[]): string | null {
   const systemMessages = messages.filter(
     (message) => message.role === "system" || message.role === "developer",
@@ -159,11 +164,51 @@ function parseStreamingResponseItems(chunks: unknown[]): ParsedResponseItem[] {
   return items;
 }
 
+function parseModelListItems(responseBody: unknown): ParsedResponseItem[] {
+  if (!responseBody || typeof responseBody !== "object" || Array.isArray(responseBody)) {
+    return [];
+  }
+
+  const data = (responseBody as Record<string, unknown>).data;
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  const modelIds = data
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const id = (item as Record<string, unknown>).id;
+      return typeof id === "string" ? id : null;
+    })
+    .filter((id): id is string => Boolean(id));
+  const preview = modelIds.slice(0, 20);
+  const remainingCount = Math.max(modelIds.length - preview.length, 0);
+  const content = [
+    `${modelIds.length} models returned.`,
+    "",
+    ...preview.map((id) => `- ${id}`),
+    remainingCount > 0 ? `... ${remainingCount} more` : null,
+  ].filter((line): line is string => line !== null).join("\n");
+
+  return [
+    {
+      kind: "message",
+      role: "assistant",
+      content,
+      raw: {
+        object: (responseBody as Record<string, unknown>).object,
+        count: modelIds.length,
+        preview,
+      },
+    },
+  ];
+}
+
 export const openAIChatAdapter: LogAdapter = {
   protocol: "openai-chat",
   matches(input: AdapterInput) {
     if (input.log.provider !== "openai") return false;
-    return Array.isArray(input.requestBody?.messages);
+    return Array.isArray(input.requestBody?.messages) || isModelsEndpoint(input.log.endpoint);
   },
   parseRequest(input: AdapterInput) {
     const messages = parseMessages(input.requestBody);
@@ -175,11 +220,15 @@ export const openAIChatAdapter: LogAdapter = {
     };
   },
   parseResponse(input: AdapterInput) {
-    const items = parseResponseItems(input.responseBody);
+    const isModelsRequest = isModelsEndpoint(input.log.endpoint);
+    const items = isModelsRequest
+      ? parseModelListItems(input.responseBody)
+      : parseResponseItems(input.responseBody);
+
     return {
       items,
       raw: input.responseBody,
-      effectiveBody: input.effectiveResponseBody,
+      effectiveBody: isModelsRequest ? null : input.effectiveResponseBody,
       hasToolCalls: hasResponseToolCalls(items),
     };
   },

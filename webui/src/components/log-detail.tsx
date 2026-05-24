@@ -34,7 +34,7 @@ type ParsedJsonBlock = {
 
 type LogDetailData = {
   parsed: ReturnType<typeof parseLog>;
-  responseRawText: string | null;
+  responseRawBlock: ParsedJsonBlock | null;
   rawBlocks: {
     relayTarget: ParsedJsonBlock | null;
     requestHeaders: ParsedJsonBlock | null;
@@ -62,7 +62,7 @@ function buildLogDetailData(log: LogEntry): LogDetailData {
 
   return {
     parsed,
-    responseRawText,
+    responseRawBlock: createJsonBlock(responseRawText, parsed.response.raw),
     rawBlocks: {
       relayTarget: {
         text: JSON.stringify(relayTarget, null, 2),
@@ -93,14 +93,22 @@ function getToolSchema(tool: ParsedTool): unknown {
 
 // ── Sub-components ──
 
-function JsonBlock({ label, block }: { label: string; block: ParsedJsonBlock | null }) {
+function JsonBlock({
+  label,
+  block,
+  collapsed = false,
+}: {
+  label: string;
+  block: ParsedJsonBlock | null;
+  collapsed?: number | boolean;
+}) {
   if (!block) return null;
 
   return (
     <div className="space-y-1.5">
       <p className="text-sm font-medium text-muted-foreground">{label}</p>
       {block.parsed !== null && typeof block.parsed === "object" ? (
-        <JsonViewer data={block.parsed} />
+        <JsonViewer data={block.parsed} collapsed={collapsed} />
       ) : (
         <pre className="bg-muted rounded-md p-3 text-xs overflow-x-auto max-h-[500px] overflow-y-auto whitespace-pre-wrap break-all">
           {block.text}
@@ -236,6 +244,38 @@ function ToolsPanel({ tools }: { tools: ParsedTool[] }) {
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+function ParamsPanel({
+  headers,
+  request,
+}: {
+  headers: ParsedJsonBlock | null;
+  request: Record<string, unknown> | null;
+}) {
+  if (!headers && !request) {
+    return (
+      <p className="py-8 text-center text-sm text-muted-foreground">
+        No parameters
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <JsonBlock label="Headers" block={headers} />
+      {request ? (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium text-muted-foreground">Request</p>
+          <JsonViewer data={request} />
+        </div>
+      ) : (
+        <p className="py-4 text-center text-sm text-muted-foreground">
+          No request parameters
+        </p>
+      )}
     </div>
   );
 }
@@ -377,8 +417,8 @@ function ProtocolBadge({ protocol }: { protocol: LogProtocol }) {
   return <Badge variant="outline">{label[protocol]}</Badge>;
 }
 
-function RawResponseBlock({ data }: { data: string | null }) {
-  if (!data) {
+function RawResponseBlock({ block }: { block: ParsedJsonBlock | null }) {
+  if (!block) {
     return null;
   }
 
@@ -387,9 +427,13 @@ function RawResponseBlock({ data }: { data: string | null }) {
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-muted-foreground">Raw JSON</p>
       </div>
-      <pre className="max-h-[520px] overflow-auto rounded-md border border-border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
-        {data}
-      </pre>
+      {block.parsed !== null && typeof block.parsed === "object" ? (
+        <JsonViewer data={block.parsed} collapsed={1} />
+      ) : (
+        <pre className="max-h-[520px] overflow-auto rounded-md border border-border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
+          {block.text}
+        </pre>
+      )}
     </div>
   );
 }
@@ -397,21 +441,23 @@ function RawResponseBlock({ data }: { data: string | null }) {
 function ResponsePanel({
   items,
   effectiveBody,
-  rawBody,
+  rawBlock,
   protocol,
   hasToolCalls,
 }: {
   items: ParsedResponseItem[];
   effectiveBody: string | null;
-  rawBody: string | null;
+  rawBlock: ParsedJsonBlock | null;
   protocol: LogProtocol;
   hasToolCalls: boolean;
 }) {
   const readableText = effectiveBody;
+  const rawIsParsedJson = rawBlock?.parsed !== null && typeof rawBlock?.parsed === "object";
+  const shouldShowReadableText = Boolean(readableText && !rawIsParsedJson);
   const messageCount = items.filter((item) => item.kind === "message").length;
   const toolCallCount = items.filter((item) => item.kind === "tool_call").length;
 
-  if (!readableText && items.length === 0 && !rawBody) {
+  if (!shouldShowReadableText && items.length === 0 && !rawBlock) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
         No response body
@@ -437,7 +483,7 @@ function ResponsePanel({
             items.map((item, index) => (
               <ReadableResponseItem key={index} item={item} index={index} />
             ))
-          ) : readableText ? (
+          ) : shouldShowReadableText && readableText ? (
             <div className="max-h-[520px] overflow-y-auto rounded-md border border-border bg-muted/30 p-4">
               <MarkdownViewer content={readableText} />
             </div>
@@ -456,7 +502,7 @@ function ResponsePanel({
           </div>
         </div>
         <div className="p-3">
-          <RawResponseBlock data={rawBody} />
+          <RawResponseBlock block={rawBlock} />
         </div>
       </section>
     </div>
@@ -471,7 +517,7 @@ export function LogDetail({
   onReplayComplete,
 }: LogDetailProps) {
   const detail = useMemo(() => buildLogDetailData(log), [log]);
-  const { parsed, rawBlocks, responseRawText } = detail;
+  const { parsed, rawBlocks, responseRawBlock } = detail;
   const requestMessages = parsed.request.messages.filter(
     (message) => message.role !== "system" && message.role !== "developer",
   );
@@ -657,20 +703,14 @@ export function LogDetail({
         )}
 
         <TabsContent value="params" className="mt-4">
-          {params ? (
-            <JsonViewer data={params} />
-          ) : (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No parameters
-            </p>
-          )}
+          <ParamsPanel headers={rawBlocks.requestHeaders} request={params} />
         </TabsContent>
 
         <TabsContent value="response" className="mt-4">
           <ResponsePanel
             items={parsed.response.items}
             effectiveBody={parsed.response.effectiveBody}
-            rawBody={responseRawText}
+            rawBlock={responseRawBlock}
             protocol={parsed.protocol}
             hasToolCalls={parsed.response.hasToolCalls}
           />
@@ -680,9 +720,9 @@ export function LogDetail({
           <JsonBlock label="Relay Target" block={rawBlocks.relayTarget} />
           <JsonBlock label="Request Headers" block={rawBlocks.requestHeaders} />
           <JsonBlock label="Request Body" block={rawBlocks.requestBody} />
-          <JsonBlock label="Response Body (Full)" block={rawBlocks.responseBody} />
+          <JsonBlock label="Response Body (Full)" block={rawBlocks.responseBody} collapsed={1} />
           {log.is_streaming === 1 && (
-            <JsonBlock label="Streaming Chunks" block={rawBlocks.streamingChunks} />
+            <JsonBlock label="Streaming Chunks" block={rawBlocks.streamingChunks} collapsed={1} />
           )}
         </TabsContent>
 

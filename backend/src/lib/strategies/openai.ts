@@ -10,11 +10,44 @@ import {
 } from "./shared.js";
 import type { RelayProviderConfig, RelayStrategy, RelayRequest } from "./types.js";
 
-function createRelayClient(config: RelayProviderConfig, headers: Record<string, string>): OpenAI {
+function createRelayClient(
+  config: RelayProviderConfig,
+  headers: Record<string, string>,
+  baseURL = config.baseUrl
+): OpenAI {
   return new OpenAI({
-    baseURL: config.baseUrl,
+    baseURL,
     apiKey: getOpenAIApiKey(config, headers),
   });
+}
+
+function isModelsRequest(requestPath: string): boolean {
+  const pathname = new URL(requestPath, "http://proxy.local").pathname;
+  return pathname === "/v1/models" || pathname.startsWith("/v1/models/");
+}
+
+function stripPathSuffix(pathname: string, suffix: string[]): string {
+  const segments = pathname.split("/").filter(Boolean);
+  const hasSuffix = suffix.every(
+    (segment, index) => segments[segments.length - suffix.length + index] === segment
+  );
+
+  if (!hasSuffix) {
+    return pathname;
+  }
+
+  const stripped = segments.slice(0, -suffix.length);
+  return `/${stripped.join("/")}`;
+}
+
+function getOpenAIRelayBaseUrl(requestPath: string, baseUrl: string): string {
+  if (!isModelsRequest(requestPath)) {
+    return baseUrl;
+  }
+
+  const url = new URL(baseUrl);
+  url.pathname = stripPathSuffix(url.pathname, ["chat", "completions"]);
+  return url.toString();
 }
 
 function extractOpenAITokens(data: Record<string, unknown>): Tokens {
@@ -72,10 +105,12 @@ export const openaiStrategy: RelayStrategy = {
     };
   },
   getRelayUrl(request: RelayRequest, config: RelayProviderConfig) {
-    return getSdkTargetUrl(createRelayClient(config, request.headers), request, config.baseUrl);
+    const baseUrl = getOpenAIRelayBaseUrl(request.path, config.baseUrl);
+    return getSdkTargetUrl(createRelayClient(config, request.headers, baseUrl), request, baseUrl);
   },
   sendRelayRequest(request: RelayRequest, config: RelayProviderConfig) {
-    return sendSdkRequest(createRelayClient(config, request.headers), request, config.baseUrl);
+    const baseUrl = getOpenAIRelayBaseUrl(request.path, config.baseUrl);
+    return sendSdkRequest(createRelayClient(config, request.headers, baseUrl), request, baseUrl);
   },
   extractTokens(data) {
     return extractOpenAITokens(data);

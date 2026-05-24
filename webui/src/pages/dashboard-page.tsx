@@ -444,6 +444,7 @@ export function DashboardPage({
           <CardContent>
             <EndpointRow label="Base URL" value={API_BASE_URL} copyable />
             <EndpointRow label="Chat" value="/v1/chat/completions" />
+            <EndpointRow label="Models" value="/v1/models" />
             <EndpointRow label="Responses" value="/v1/responses" />
             <EndpointRow label="Messages" value="/v1/messages" />
           </CardContent>
