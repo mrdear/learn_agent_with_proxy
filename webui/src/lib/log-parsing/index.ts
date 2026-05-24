@@ -4,7 +4,12 @@ import { fallbackAdapter } from "./adapters/fallback";
 import { openAIChatAdapter } from "./adapters/openai-chat";
 import { openAIResponsesAdapter } from "./adapters/openai-responses";
 import type { AdapterInput, LogAdapter } from "./adapters/types";
-import { lastTextFromContentParts, parseJson, parseJsonObject } from "./json";
+import {
+  firstTextFromContentParts,
+  lastTextFromContentParts,
+  parseJson,
+  parseJsonObject,
+} from "./json";
 import type { ParsedLog, ParsedMessage, ParsedResponseItem } from "./types";
 
 const adapters: LogAdapter[] = [
@@ -21,10 +26,16 @@ function getEffectiveResponseBody(log: LogEntry): string | null {
   return log.response_body_finish;
 }
 
-function firstUserMessage(messages: ParsedMessage[]): string | null {
+function firstUserMessageLastText(messages: ParsedMessage[]): string | null {
   const userMessage = messages.find((message) => message.role === "user");
   if (!userMessage) return null;
   return lastTextFromContentParts(userMessage.content);
+}
+
+function lastUserMessageFirstText(messages: ParsedMessage[]): string | null {
+  const userMessage = messages.findLast((message) => message.role === "user");
+  if (!userMessage) return null;
+  return firstTextFromContentParts(userMessage.content);
 }
 
 function countMessageToolCalls(messages: ParsedMessage[]): number {
@@ -66,7 +77,8 @@ export function parseLog(log: LogEntry): ParsedLog {
     request,
     response,
     summary: {
-      firstUserMessage: firstUserMessage(request.messages),
+      firstUserMessage: firstUserMessageLastText(request.messages),
+      lastUserMessageFirstText: lastUserMessageFirstText(request.messages),
       messageCount: request.messages.length,
       toolsDefinedCount: request.tools.length,
       toolCallCount:

@@ -115,6 +115,35 @@ function CountBadge({ value, label }: { value: number; label: string }) {
   );
 }
 
+function truncateMessage(message: string): string {
+  return message.length > 140 ? `${message.slice(0, 140)}...` : message;
+}
+
+function isSameMessagePreview(a: string | null, b: string | null): boolean {
+  return Boolean(a && b && a.trim() === b.trim());
+}
+
+function UserMessageLine({
+  label,
+  message,
+}: {
+  label: string;
+  message: string | null;
+}) {
+  return (
+    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-start gap-2">
+      <span className="text-muted-foreground">{label}</span>
+      {message ? (
+        <span className="line-clamp-1 break-words" title={message.slice(0, 240)}>
+          {truncateMessage(message)}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">--</span>
+      )}
+    </div>
+  );
+}
+
 function SignalBadges({ log }: { log: LogEntry }) {
   const signals: Array<{ label: string; variant: "outline" | "secondary" | "destructive" }> = [];
 
@@ -206,6 +235,12 @@ function LogRow({
   onSelect: (log: LogEntry) => void;
 }) {
   const parsed = parseLog(log);
+  const firstUserMessage = parsed.summary.firstUserMessage;
+  const lastUserMessageFirstText = parsed.summary.lastUserMessageFirstText;
+  const showLastUserMessage = !isSameMessagePreview(
+    firstUserMessage,
+    lastUserMessageFirstText
+  );
 
   return (
     <TableRow
@@ -247,19 +282,12 @@ function LogRow({
         {log.model || "--"}
       </TableCell>
       <TableCell className="whitespace-normal text-xs">
-        {(() => {
-          const msg = parsed.summary.firstUserMessage;
-          if (!msg) return <span className="text-muted-foreground">--</span>;
-          const truncated = msg.length > 140 ? msg.slice(0, 140) + "..." : msg;
-          return (
-            <span
-              className="line-clamp-2 break-words"
-              title={msg.slice(0, 240)}
-            >
-              {truncated}
-            </span>
-          );
-        })()}
+        <div className="flex flex-col gap-1">
+          <UserMessageLine label="首轮末段" message={firstUserMessage} />
+          {showLastUserMessage ? (
+            <UserMessageLine label="末轮首段" message={lastUserMessageFirstText} />
+          ) : null}
+        </div>
       </TableCell>
       <TableCell
         className="max-w-[210px] truncate font-mono text-xs"
@@ -347,7 +375,7 @@ export function LogTable({
               <TableHead className="w-[90px]">Provider</TableHead>
               <TableHead className="w-[72px]">Status</TableHead>
               <TableHead className="w-[180px]">Model</TableHead>
-              <TableHead className="w-[330px]">User Message</TableHead>
+              <TableHead className="w-[330px]">User Messages</TableHead>
               <TableHead className="w-[210px]">Endpoint</TableHead>
               <TableHead className="w-[70px]">Stream</TableHead>
               <TableHead className="w-[80px]">Messages</TableHead>

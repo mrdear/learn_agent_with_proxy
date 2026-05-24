@@ -72,6 +72,22 @@ export function lastTextFromContentParts(
   return typeof lastTextPart?.text === "string" ? lastTextPart.text : null;
 }
 
+export function firstTextFromContentParts(
+  content: unknown,
+  preferredTypes: string[] = ["text", "input_text", "output_text"],
+): string | null {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+
+  const firstTextPart = (content as Array<Record<string, unknown>>).find((part) => {
+    if (typeof part.text !== "string") return false;
+    if (typeof part.type !== "string") return true;
+    return preferredTypes.includes(part.type);
+  });
+
+  return typeof firstTextPart?.text === "string" ? firstTextPart.text : null;
+}
+
 export function objectEntriesWithout(
   body: Record<string, unknown> | null,
   excludedKeys: string[],

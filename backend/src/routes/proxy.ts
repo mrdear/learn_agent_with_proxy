@@ -24,6 +24,88 @@ function createResponseHeaders(response: Response, defaultContentType?: string):
   return headers;
 }
 
+function isEventStreamResponse(response: Response): boolean {
+  return response.headers.get("content-type")?.toLowerCase().includes("text/event-stream") ?? false;
+}
+
+function truncateForLog(value: string, maxLength = 2000): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isSensitiveKey(key: string): boolean {
+  return /authorization|api[-_]?key|token|secret|password|credential|cookie/i.test(key);
+}
+
+function redactText(value: string): string {
+  return value.replace(/Bearer\s+[\w.+/=~-]+/gi, "Bearer [redacted]");
+}
+
+function redactSensitiveValues(value: unknown): unknown {
+  if (typeof value === "string") return redactText(value);
+  if (Array.isArray(value)) return value.map((item) => redactSensitiveValues(item));
+  if (!isRecord(value)) return value;
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [
+      key,
+      isSensitiveKey(key) ? "[redacted]" : redactSensitiveValues(child),
+    ])
+  );
+}
+
+function pickErrorFields(error: Record<string, unknown>): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+
+  for (const key of ["message", "type", "code", "param", "status"]) {
+    if (error[key] !== undefined) {
+      fields[key] = redactSensitiveValues(error[key]);
+    }
+  }
+
+  return Object.keys(fields).length > 0 ? fields : redactSensitiveValues(error) as Record<string, unknown>;
+}
+
+function formatUpstreamErrorBody(responseBody: string): string {
+  const body = responseBody.trim();
+  if (!body) return "<empty>";
+
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (isRecord(parsed)) {
+      if (typeof parsed.error === "string") {
+        return JSON.stringify({ error: redactText(parsed.error) });
+      }
+      if (isRecord(parsed.error)) {
+        return JSON.stringify({ error: pickErrorFields(parsed.error) });
+      }
+      return JSON.stringify(redactSensitiveValues(parsed));
+    }
+  } catch {
+    // Fall through to sanitized text for non-JSON error bodies.
+  }
+
+  return redactText(truncateForLog(body));
+}
+
+function logUpstreamError(params: {
+  requestId: string;
+  status: number;
+  statusText: string;
+  upstreamUrl: string;
+  responseBody: string;
+}): void {
+  const statusText = params.statusText ? ` ${params.statusText}` : "";
+
+  console.warn(
+    `[PROXY] upstream error ${params.status}${statusText} request=${params.requestId} url=${params.upstreamUrl}`
+  );
+  console.warn(`[PROXY] upstream error body ${formatUpstreamErrorBody(params.responseBody)}`);
+}
+
 function readBearerToken(headers: Headers): string | null {
   const authorization = headers.get("authorization")?.trim();
   if (!authorization?.toLowerCase().startsWith("bearer ")) {
@@ -168,9 +250,9 @@ proxy.all("/v1/*", async (c) => {
   });
 
   try {
-    const { response } = await strategy.sendRelayRequest(relayInput, providerConfig);
+    const { response, targetUrl } = await strategy.sendRelayRequest(relayInput, providerConfig);
 
-    if (bodyInspection.isStreaming && response.body) {
+    if (bodyInspection.isStreaming && response.ok && response.body && isEventStreamResponse(response)) {
       const [clientBody, logBody] = response.body.tee();
 
       void recordStreamingResponse({
@@ -189,6 +271,16 @@ proxy.all("/v1/*", async (c) => {
 
     const responseText = await response.text();
     let tokens = { input: null as number | null, output: null as number | null };
+
+    if (!response.ok) {
+      logUpstreamError({
+        requestId,
+        status: response.status,
+        statusText: response.statusText,
+        upstreamUrl: targetUrl,
+        responseBody: responseText,
+      });
+    }
 
     try {
       const responseJson = JSON.parse(responseText) as Record<string, unknown>;

@@ -44,6 +44,7 @@ export interface ParsedLog {
   };
   summary: {
     firstUserMessage: string | null;
+    lastUserMessageFirstText: string | null;
     messageCount: number;
     toolsDefinedCount: number;
     toolCallCount: number;
