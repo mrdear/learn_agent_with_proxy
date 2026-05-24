@@ -93,22 +93,14 @@ function getToolSchema(tool: ParsedTool): unknown {
 
 // ── Sub-components ──
 
-function JsonBlock({
-  label,
-  block,
-  collapsed = false,
-}: {
-  label: string;
-  block: ParsedJsonBlock | null;
-  collapsed?: number | boolean;
-}) {
+function JsonBlock({ label, block }: { label: string; block: ParsedJsonBlock | null }) {
   if (!block) return null;
 
   return (
     <div className="space-y-1.5">
       <p className="text-sm font-medium text-muted-foreground">{label}</p>
       {block.parsed !== null && typeof block.parsed === "object" ? (
-        <JsonViewer data={block.parsed} collapsed={collapsed} />
+        <JsonViewer data={block.parsed} />
       ) : (
         <pre className="bg-muted rounded-md p-3 text-xs overflow-x-auto max-h-[500px] overflow-y-auto whitespace-pre-wrap break-all">
           {block.text}
@@ -428,7 +420,7 @@ function RawResponseBlock({ block }: { block: ParsedJsonBlock | null }) {
         <p className="text-xs font-medium text-muted-foreground">Raw JSON</p>
       </div>
       {block.parsed !== null && typeof block.parsed === "object" ? (
-        <JsonViewer data={block.parsed} collapsed={1} />
+        <JsonViewer data={block.parsed} />
       ) : (
         <pre className="max-h-[520px] overflow-auto rounded-md border border-border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
           {block.text}
@@ -720,9 +712,9 @@ export function LogDetail({
           <JsonBlock label="Relay Target" block={rawBlocks.relayTarget} />
           <JsonBlock label="Request Headers" block={rawBlocks.requestHeaders} />
           <JsonBlock label="Request Body" block={rawBlocks.requestBody} />
-          <JsonBlock label="Response Body (Full)" block={rawBlocks.responseBody} collapsed={1} />
+          <JsonBlock label="Response Body (Full)" block={rawBlocks.responseBody} />
           {log.is_streaming === 1 && (
-            <JsonBlock label="Streaming Chunks" block={rawBlocks.streamingChunks} collapsed={1} />
+            <JsonBlock label="Streaming Chunks" block={rawBlocks.streamingChunks} />
           )}
         </TabsContent>
 
