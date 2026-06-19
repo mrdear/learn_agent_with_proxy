@@ -567,7 +567,7 @@ export function LogDetail({
   const detail = useMemo(() => buildLogDetailData(log), [log]);
   const { parsed, rawBlocks, responseRawBlock } = detail;
   const requestMessages = parsed.request.messages.filter(
-    (message) => message.role !== "system" && message.role !== "developer",
+    (message) => message.role !== "system",
   );
   const systemPrompt = parsed.request.systemPrompt;
   const tools = parsed.request.tools;

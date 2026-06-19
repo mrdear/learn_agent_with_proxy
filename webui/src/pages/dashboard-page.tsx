@@ -10,8 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { type LogEntry, fetchLogs, fetchProviderConfigs, type ProviderConfig } from "@/lib/api";
-import { parseLog } from "@/lib/log-parsing";
+import { type LogListEntry, fetchLogs, fetchProviderConfigs, type ProviderConfig } from "@/lib/api";
 import type { RoutePath } from "@/lib/routes";
 import {
   ArrowRightIcon,
@@ -173,9 +172,8 @@ function EndpointRow({
   );
 }
 
-function RecentLogRow({ log }: { log: LogEntry }) {
-  const parsed = parseLog(log);
-  const summary = parsed.summary.firstUserMessage || log.endpoint || "No prompt summary";
+function RecentLogRow({ log }: { log: LogListEntry }) {
+  const summary = log.request_preview || log.endpoint || "No prompt summary";
   const trimmed = summary.length > 120 ? `${summary.slice(0, 120)}...` : summary;
 
   return (
@@ -348,7 +346,7 @@ export function DashboardPage({
 }: {
   onNavigate: (path: RoutePath) => void;
 }) {
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logs, setLogs] = useState<LogListEntry[]>([]);
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfig[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);

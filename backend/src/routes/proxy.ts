@@ -3,12 +3,15 @@ import { Hono } from "hono";
 import {
   collectSseChunks,
   detectProvider,
+  type Provider,
   inspectRequestBody,
 } from "../lib/proxy.js";
 import { cloneResponseHeaders, sanitizeHeaders } from "../lib/http.js";
 import { getRelayStrategy, type RelayStrategy } from "../lib/strategies/index.js";
+import { normalizeRelayPath } from "../lib/strategies/shared.js";
 import { proxyEventBus } from "../events/index.js";
 import { getProviderConfigByAccessKey } from "../db/index.js";
+import type { ProviderRuntimeConfig } from "../db/index.js";
 
 function isBodyMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
@@ -26,6 +29,57 @@ function createResponseHeaders(response: Response, defaultContentType?: string):
 
 function isEventStreamResponse(response: Response): boolean {
   return response.headers.get("content-type")?.toLowerCase().includes("text/event-stream") ?? false;
+}
+
+function isModelsRequest(pathname: string): boolean {
+  return pathname === "/v1/models" || pathname.startsWith("/v1/models/");
+}
+
+function stripPathSuffix(pathname: string, suffix: string[]): string {
+  const segments = pathname.split("/").filter(Boolean);
+  const hasSuffix =
+    segments.length >= suffix.length &&
+    suffix.every(
+      (segment, index) => segments[segments.length - suffix.length + index] === segment
+    );
+
+  if (!hasSuffix) {
+    return pathname;
+  }
+
+  return `/${segments.slice(0, -suffix.length).join("/")}`;
+}
+
+function getPassthroughBaseUrl(baseUrl: string): string {
+  const url = new URL(baseUrl);
+  for (const suffix of [["chat", "completions"], ["responses"], ["messages"]]) {
+    const strippedPathname = stripPathSuffix(url.pathname, suffix);
+    if (strippedPathname !== url.pathname) {
+      url.pathname = strippedPathname;
+      break;
+    }
+  }
+  return url.toString();
+}
+
+function appendRelayPath(baseUrl: string, relayPath: string): string {
+  const target = new URL(baseUrl);
+  const [pathname, search = ""] = relayPath.split("?", 2);
+  const baseSegments = target.pathname.split("/").filter(Boolean);
+  const relaySegments = pathname.split("/").filter(Boolean);
+
+  target.pathname = `/${[...baseSegments, ...relaySegments].join("/")}`;
+  target.search = search ? `?${search}` : "";
+
+  return target.toString();
+}
+
+function getPassthroughUrl(baseUrl: string, requestPath: string): string {
+  const passthroughBaseUrl = getPassthroughBaseUrl(baseUrl);
+  return appendRelayPath(
+    passthroughBaseUrl,
+    normalizeRelayPath(passthroughBaseUrl, requestPath)
+  );
 }
 
 function truncateForLog(value: string, maxLength = 2000): string {
@@ -115,6 +169,91 @@ function readBearerToken(headers: Headers): string | null {
   return authorization.slice(7).trim() || null;
 }
 
+async function forwardModelsRequest(params: {
+  provider: Provider;
+  providerConfig: ProviderRuntimeConfig;
+  strategy: RelayStrategy;
+  requestId: string;
+  requestPath: string;
+  method: string;
+  rawHeaders: Headers;
+  requestBody: string | null;
+  requestTime: string;
+  startTime: number;
+  signal: AbortSignal;
+}): Promise<Response> {
+  const relayRequest = params.strategy.prepareRelayRequest(
+    inspectRequestBody(null),
+    params.rawHeaders,
+    params.providerConfig
+  );
+  const upstreamUrl = getPassthroughUrl(params.providerConfig.baseUrl, params.requestPath);
+  const requestHeaders = sanitizeHeaders(params.rawHeaders);
+
+  proxyEventBus.emit("proxy:request", {
+    requestId: params.requestId,
+    provider: params.provider,
+    endpoint: params.requestPath,
+    upstreamUrl,
+    method: params.method,
+    headers: requestHeaders,
+    body: params.requestBody,
+    model: null,
+    isStreaming: false,
+    requestTime: params.requestTime,
+  });
+
+  try {
+    const response = await fetch(upstreamUrl, {
+      method: params.method,
+      headers: relayRequest.headers,
+      body: isBodyMethod(params.method) ? (params.requestBody ?? undefined) : undefined,
+      signal: params.signal,
+    });
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      logUpstreamError({
+        requestId: params.requestId,
+        status: response.status,
+        statusText: response.statusText,
+        upstreamUrl,
+        responseBody: responseText,
+      });
+    }
+
+    proxyEventBus.emit("proxy:response", {
+      requestId: params.requestId,
+      status: response.status,
+      body: null,
+      bodyFinish: responseText,
+      inputTokens: null,
+      outputTokens: null,
+      responseTime: new Date().toISOString(),
+      durationMs: Date.now() - params.startTime,
+    });
+
+    return new Response(responseText, {
+      status: response.status,
+      headers: createResponseHeaders(response, "application/json"),
+    });
+  } catch (error) {
+    proxyEventBus.emit("proxy:error", {
+      requestId: params.requestId,
+      status: 502,
+      error: error instanceof Error ? error.message : String(error),
+      responseTime: new Date().toISOString(),
+      durationMs: Date.now() - params.startTime,
+    });
+
+    const message = error instanceof Error ? error.message : String(error);
+    return new Response(JSON.stringify({ error: "Proxy error", message }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    });
+  }
+}
+
 async function recordStreamingResponse(params: {
   body: ReadableStream<Uint8Array>;
   strategy: RelayStrategy;
@@ -148,11 +287,15 @@ proxy.all("/v1/*", async (c) => {
   const requestPath = `${requestUrl.pathname}${requestUrl.search}`;
   const method = c.req.method;
   const rawHeaders = c.req.raw.headers;
-  const provider = detectProvider(rawHeaders, requestUrl.pathname);
-  const strategy = getRelayStrategy(provider);
+  const detectedProvider = detectProvider(rawHeaders, requestUrl.pathname);
   const logHeaders = sanitizeHeaders(rawHeaders);
   const accessKey = readBearerToken(rawHeaders);
   const providerConfig = accessKey ? getProviderConfigByAccessKey(accessKey) : null;
+  const isModelsPassthrough = isModelsRequest(requestUrl.pathname);
+  const provider = isModelsPassthrough && providerConfig
+    ? providerConfig.provider
+    : detectedProvider;
+  const strategy = getRelayStrategy(provider);
 
   let requestBody: string | null = null;
   let bodyInspection = inspectRequestBody(null);
@@ -162,7 +305,11 @@ proxy.all("/v1/*", async (c) => {
     bodyInspection = inspectRequestBody(requestBody);
   }
 
-  if (!providerConfig || providerConfig.provider !== provider || !providerConfig.enabled) {
+  if (
+    !providerConfig ||
+    (!isModelsPassthrough && providerConfig.provider !== provider) ||
+    !providerConfig.enabled
+  ) {
     const status = providerConfig?.enabled === false ? 400 : 401;
     const message = !accessKey
       ? "Missing proxy access key"
@@ -194,6 +341,22 @@ proxy.all("/v1/*", async (c) => {
     });
 
     return c.json({ error: "Proxy access error", message }, status as 400 | 401);
+  }
+
+  if (isModelsPassthrough) {
+    return forwardModelsRequest({
+      provider,
+      providerConfig,
+      strategy,
+      requestId,
+      requestPath,
+      method,
+      rawHeaders,
+      requestBody,
+      requestTime,
+      startTime,
+      signal: c.req.raw.signal,
+    });
   }
 
   const relayRequest = strategy.prepareRelayRequest(bodyInspection, rawHeaders, providerConfig);

@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import type { LogEntry } from "@/lib/api";
+import type { LogListEntry } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,10 +14,9 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
-import { parseLog } from "@/lib/log-parsing";
 
 interface LogTableProps {
-  logs: LogEntry[];
+  logs: LogListEntry[];
   loading: boolean;
   page: number;
   totalPages: number;
@@ -25,8 +24,8 @@ interface LogTableProps {
   groupGapMs: number;
   viewedId?: number | null;
   onPageChange: (page: number) => void;
-  onToggleSelect: (log: LogEntry, checked: boolean) => void;
-  onSelect: (log: LogEntry) => void;
+  onToggleSelect: (log: LogListEntry, checked: boolean) => void;
+  onSelect: (log: LogListEntry) => void;
 }
 
 const TABLE_COLUMN_COUNT = 14;
@@ -36,7 +35,7 @@ interface LogGroup {
   provider: string;
   startTime: number;
   endTime: number;
-  logs: LogEntry[];
+  logs: LogListEntry[];
 }
 
 const groupAccentClasses = [
@@ -107,7 +106,15 @@ function formatTokens(input: number | null, output: number | null): string {
   return `${input ?? "?"}/${output ?? "?"}`;
 }
 
-function CountBadge({ value, label }: { value: number; label: string }) {
+function CountBadge({ value, label }: { value: number | null; label: string }) {
+  if (value === null) {
+    return (
+      <Badge variant="outline" className="font-mono">
+        -- {label}
+      </Badge>
+    );
+  }
+
   return (
     <Badge variant={value > 0 ? "secondary" : "outline"} className="font-mono">
       {value} {label}
@@ -115,27 +122,23 @@ function CountBadge({ value, label }: { value: number; label: string }) {
   );
 }
 
-function truncateMessage(message: string): string {
+function truncatePreview(message: string): string {
   return message.length > 140 ? `${message.slice(0, 140)}...` : message;
 }
 
-function isSameMessagePreview(a: string | null, b: string | null): boolean {
-  return Boolean(a && b && a.trim() === b.trim());
-}
-
-function UserMessageLine({
+function PreviewLine({
   label,
-  message,
+  preview,
 }: {
   label: string;
-  message: string | null;
+  preview: string | null;
 }) {
   return (
-    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-start gap-2">
+    <div className="grid grid-cols-[4.75rem_minmax(0,1fr)] items-start gap-2">
       <span className="text-muted-foreground">{label}</span>
-      {message ? (
-        <span className="line-clamp-1 break-words" title={message.slice(0, 240)}>
-          {truncateMessage(message)}
+      {preview ? (
+        <span className="line-clamp-1 break-words" title={preview.slice(0, 240)}>
+          {truncatePreview(preview)}
         </span>
       ) : (
         <span className="text-muted-foreground">--</span>
@@ -144,13 +147,13 @@ function UserMessageLine({
   );
 }
 
-function SignalBadges({ log }: { log: LogEntry }) {
+function SignalBadges({ log }: { log: LogListEntry }) {
   const signals: Array<{ label: string; variant: "outline" | "secondary" | "destructive" }> = [];
 
   if (log.error || (log.response_status !== null && log.response_status >= 400)) {
     signals.push({ label: "error", variant: "destructive" });
   }
-  if (!log.upstream_url) {
+  if (!log.has_upstream_url) {
     signals.push({ label: "no upstream", variant: "outline" });
   }
   if (log.source_log_id) {
@@ -190,7 +193,7 @@ function formatGroupTimeRange(startTime: number, endTime: number): string {
   return `${date} ${timeFormat.format(start)}-${timeFormat.format(end)}`;
 }
 
-function groupLogs(logs: LogEntry[], groupGapMs: number): LogGroup[] {
+function groupLogs(logs: LogListEntry[], groupGapMs: number): LogGroup[] {
   const groups: LogGroup[] = [];
 
   for (const log of logs) {
@@ -228,20 +231,12 @@ function LogRow({
   onToggleSelect,
   onSelect,
 }: {
-  log: LogEntry;
+  log: LogListEntry;
   selected: boolean;
   viewed: boolean;
-  onToggleSelect: (log: LogEntry, checked: boolean) => void;
-  onSelect: (log: LogEntry) => void;
+  onToggleSelect: (log: LogListEntry, checked: boolean) => void;
+  onSelect: (log: LogListEntry) => void;
 }) {
-  const parsed = parseLog(log);
-  const firstUserMessage = parsed.summary.firstUserMessage;
-  const lastUserMessageFirstText = parsed.summary.lastUserMessageFirstText;
-  const showLastUserMessage = !isSameMessagePreview(
-    firstUserMessage,
-    lastUserMessageFirstText
-  );
-
   return (
     <TableRow
       key={log.id}
@@ -283,10 +278,8 @@ function LogRow({
       </TableCell>
       <TableCell className="whitespace-normal text-xs">
         <div className="flex flex-col gap-1">
-          <UserMessageLine label="首轮末段" message={firstUserMessage} />
-          {showLastUserMessage ? (
-            <UserMessageLine label="末轮首段" message={lastUserMessageFirstText} />
-          ) : null}
+          <PreviewLine label="Request" preview={log.request_preview} />
+          <PreviewLine label="Response" preview={log.response_preview} />
         </div>
       </TableCell>
       <TableCell
@@ -303,12 +296,12 @@ function LogRow({
         )}
       </TableCell>
       <TableCell>
-        <CountBadge value={parsed.summary.messageCount} label="msg" />
+        <CountBadge value={log.message_count} label="msg" />
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap gap-1">
-          <CountBadge value={parsed.summary.toolsDefinedCount} label="def" />
-          <CountBadge value={parsed.summary.toolCallCount} label="call" />
+          <CountBadge value={log.tools_defined_count} label="def" />
+          <CountBadge value={log.tool_call_count} label="call" />
         </div>
       </TableCell>
       <TableCell className="font-mono text-xs">

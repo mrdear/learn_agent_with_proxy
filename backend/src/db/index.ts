@@ -146,6 +146,35 @@ export interface LogRow {
   created_at: string;
 }
 
+export interface LogListRow {
+  id: number;
+  provider: string;
+  endpoint: string;
+  method: string;
+  has_upstream_url: number;
+  response_status: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_creation_tokens: number | null;
+  thinking_tokens: number | null;
+  request_time: string;
+  response_time: string | null;
+  duration_ms: number | null;
+  model: string | null;
+  is_streaming: number;
+  source_log_id: number | null;
+  error: string | null;
+  created_at: string;
+  request_preview: string | null;
+  response_preview: string | null;
+  request_body_size: number | null;
+  response_body_size: number | null;
+  message_count: number | null;
+  tools_defined_count: number | null;
+  tool_call_count: number | null;
+}
+
 export type ProviderName = "openai" | "anthropic" | "openai-responses";
 
 export interface ProviderConfigPublic {
@@ -391,7 +420,7 @@ export function getLogs(params: {
   provider?: string;
   model?: string;
   search?: string;
-}): { data: LogRow[]; total: number } {
+}): { data: LogListRow[]; total: number } {
   const conditions: string[] = [];
   const values: Record<string, unknown> = {};
 
@@ -416,8 +445,65 @@ export function getLogs(params: {
   ).count;
 
   const data = db
-    .prepare(`SELECT * FROM logs ${where} ORDER BY id DESC LIMIT @limit OFFSET @offset`)
-    .all({ ...values, limit: params.pageSize, offset }) as LogRow[];
+    .prepare(
+      `SELECT
+        id,
+        provider,
+        endpoint,
+        method,
+        upstream_url IS NOT NULL AS has_upstream_url,
+        response_status,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        thinking_tokens,
+        request_time,
+        response_time,
+        duration_ms,
+        model,
+        is_streaming,
+        source_log_id,
+        error,
+        created_at,
+        CASE
+          WHEN request_body IS NULL THEN NULL
+          ELSE substr(replace(replace(request_body, char(10), ' '), char(13), ' '), 1, 240)
+        END AS request_preview,
+        CASE
+          WHEN COALESCE(response_body_finish, response_body) IS NULL THEN NULL
+          ELSE substr(replace(replace(COALESCE(response_body_finish, response_body), char(10), ' '), char(13), ' '), 1, 240)
+        END AS response_preview,
+        length(request_body) AS request_body_size,
+        length(COALESCE(response_body_finish, response_body)) AS response_body_size,
+        CASE
+          WHEN json_valid(request_body) THEN
+            CASE
+              WHEN json_type(request_body, '$.messages') = 'array'
+                THEN json_array_length(request_body, '$.messages')
+              WHEN json_type(request_body, '$.input') = 'array'
+                THEN json_array_length(request_body, '$.input')
+              ELSE NULL
+            END
+          ELSE NULL
+        END AS message_count,
+        CASE
+          WHEN json_valid(request_body) THEN
+            CASE
+              WHEN json_type(request_body, '$.tools') = 'array'
+                THEN json_array_length(request_body, '$.tools')
+              WHEN json_type(request_body, '$.functions') = 'array'
+                THEN json_array_length(request_body, '$.functions')
+              ELSE NULL
+            END
+          ELSE NULL
+        END AS tools_defined_count,
+        NULL AS tool_call_count
+       FROM logs ${where}
+       ORDER BY id DESC
+       LIMIT @limit OFFSET @offset`
+    )
+    .all({ ...values, limit: params.pageSize, offset }) as LogListRow[];
 
   return { data, total };
 }
@@ -428,6 +514,17 @@ export function getLogById(id: number): LogRow | undefined {
 
 export function clearLogs(): number {
   const result = db.prepare("DELETE FROM logs").run();
+  return result.changes;
+}
+
+export function deleteLogs(ids: number[]): number {
+  const uniqueIds = [...new Set(ids)].filter((id) => Number.isInteger(id) && id > 0);
+  if (uniqueIds.length === 0) {
+    return 0;
+  }
+
+  const placeholders = uniqueIds.map(() => "?").join(",");
+  const result = db.prepare(`DELETE FROM logs WHERE id IN (${placeholders})`).run(...uniqueIds);
   return result.changes;
 }
 

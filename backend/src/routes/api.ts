@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import {
   clearLogs,
   deleteModelMapping,
+  deleteLogs,
   getLogById,
   getLogs,
   getModelMappings,
@@ -52,17 +53,34 @@ function parseExtraHeaders(value: unknown): Record<string, string> {
   return headers;
 }
 
+function parseLogIds(value: unknown): number[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const ids = value
+    .map((id) => (typeof id === "number" ? id : Number.NaN))
+    .filter((id) => Number.isInteger(id) && id > 0);
+
+  return ids.length === value.length ? ids : null;
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = parseInt(value || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 // GET /api/logs - list logs with pagination and filtering
 api.get("/logs", (c) => {
-  const page = parseInt(c.req.query("page") || "1", 10);
-  const pageSize = parseInt(c.req.query("pageSize") || "50", 10);
+  const page = parsePositiveInt(c.req.query("page"), 1);
+  const pageSize = Math.min(100, parsePositiveInt(c.req.query("pageSize"), 20));
   const provider = c.req.query("provider") || undefined;
   const model = c.req.query("model") || undefined;
   const search = c.req.query("search") || undefined;
 
   const result = getLogs({
-    page: Math.max(1, page),
-    pageSize: Math.min(100, Math.max(1, pageSize)),
+    page,
+    pageSize,
     provider,
     model,
     search,
@@ -136,8 +154,23 @@ api.post("/logs/:id/replay", async (c) => {
   }
 });
 
-// DELETE /api/logs - clear all logs
-api.delete("/logs", (c) => {
+// DELETE /api/logs - clear all logs, or delete selected logs when ids are provided
+api.delete("/logs", async (c) => {
+  const rawBody = await c.req.text();
+  if (rawBody.trim()) {
+    const payload = parseJsonPayload(rawBody);
+    if (!payload) {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
+
+    const ids = parseLogIds(payload.ids);
+    if (!ids || ids.length === 0) {
+      return c.json({ error: "Invalid log ids" }, 400);
+    }
+
+    return c.json({ deleted: deleteLogs(ids) });
+  }
+
   const deleted = clearLogs();
   return c.json({ deleted });
 });

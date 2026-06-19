@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { type LogEntry, fetchLogs, fetchModels, clearAllLogs, type LogListResponse } from "@/lib/api";
+import {
+  type LogEntry,
+  type LogListEntry,
+  fetchLogById,
+  fetchLogs,
+  fetchModels,
+  deleteLogs,
+  type LogListResponse,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,6 +21,7 @@ import { LogTable } from "@/components/log-table";
 import { LogDetail } from "@/components/log-detail";
 import { LogFilters } from "@/components/log-filters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { saveCompareSelection } from "@/lib/compare-selection";
 import type { RoutePath } from "@/lib/routes";
@@ -48,15 +57,18 @@ export function LogsPage({
   onNavigate: (path: RoutePath) => void;
 }) {
   const storedFilters = useMemo(readStoredFilters, []);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logs, setLogs] = useState<LogListEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(50);
+  const [pageSize] = useState(20);
   const [provider, setProvider] = useState<string>(storedFilters.provider ?? "");
   const [model, setModel] = useState<string>(storedFilters.model ?? "");
   const [search, setSearch] = useState<string>(storedFilters.search ?? "");
   const [models, setModels] = useState<string[]>([]);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
+  const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [viewedId, setViewedId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [groupGapMinutes, setGroupGapMinutes] = useState(
@@ -76,9 +88,9 @@ export function LogsPage({
   }, [selectedIds]);
 
   const selectedLogIndex = useMemo(() => {
-    if (!selectedLog) return -1;
-    return logs.findIndex((log) => log.id === selectedLog.id);
-  }, [logs, selectedLog]);
+    if (selectedLogId === null) return -1;
+    return logs.findIndex((log) => log.id === selectedLogId);
+  }, [logs, selectedLogId]);
   const previousLog = selectedLogIndex > 0 ? logs[selectedLogIndex - 1] : null;
   const nextLog =
     selectedLogIndex >= 0 && selectedLogIndex < logs.length - 1
@@ -110,6 +122,41 @@ export function LogsPage({
   }, [loadLogs]);
 
   useEffect(() => {
+    if (selectedLogId === null) {
+      setSelectedLog(null);
+      setDetailLoading(false);
+      setDetailError(null);
+      return;
+    }
+
+    let active = true;
+    setSelectedLog(null);
+    setDetailError(null);
+    setDetailLoading(true);
+
+    fetchLogById(selectedLogId)
+      .then((log) => {
+        if (!active) return;
+        setSelectedLog(log);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "详情加载失败";
+        if (!active) return;
+        setDetailError(message);
+        toast.error(message);
+      })
+      .finally(() => {
+        if (active) {
+          setDetailLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedLogId]);
+
+  useEffect(() => {
     fetchModels().then(setModels).catch(console.error);
   }, []);
 
@@ -122,7 +169,7 @@ export function LogsPage({
 
   const totalPages = Math.ceil(total / pageSize);
 
-  const handleToggleSelect = useCallback((log: LogEntry, checked: boolean) => {
+  const handleToggleSelect = useCallback((log: LogListEntry, checked: boolean) => {
     setSelectedIds((current) => {
       if (checked) {
         if (current.includes(log.id)) {
@@ -141,6 +188,52 @@ export function LogsPage({
     saveCompareSelection([selectedIds[0], selectedIds[1]]);
     onNavigate("/compare");
   }, [compareEnabled, onNavigate, selectedIds]);
+
+  const handleDeleteLogs = useCallback(async () => {
+    const idsToDelete = selectedIds.length > 0 ? selectedIds : undefined;
+    const deletingSelected = Boolean(idsToDelete);
+    const confirmMessage = deletingSelected
+      ? `确认删除选中的 ${selectedIds.length} 条日志？此操作不可恢复。`
+      : "确认清除所有日志？此操作不可恢复。";
+
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      const { deleted } = await deleteLogs(idsToDelete);
+      toast.success(deletingSelected ? `已删除 ${deleted} 条选中日志` : `已清除 ${deleted} 条日志`);
+
+      const deletedIds = new Set(idsToDelete ?? []);
+      const remainingLogsOnPage = idsToDelete
+        ? logs.filter((log) => !deletedIds.has(log.id)).length
+        : 0;
+
+      setSelectedIds([]);
+
+      if (!idsToDelete || (selectedLogId !== null && deletedIds.has(selectedLogId))) {
+        setViewedId(null);
+        setSelectedLogId(null);
+        setSelectedLog(null);
+      }
+
+      if (!idsToDelete) {
+        if (page === 1) {
+          void loadLogs();
+        } else {
+          setPage(1);
+        }
+        return;
+      }
+
+      if (remainingLogsOnPage === 0 && page > 1) {
+        setPage((currentPage) => Math.max(1, currentPage - 1));
+        return;
+      }
+
+      void loadLogs();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "删除失败");
+    }
+  }, [loadLogs, logs, page, selectedIds, selectedLogId]);
 
   const clearSelection = useCallback(() => {
     setSelectedIds([]);
@@ -168,21 +261,9 @@ export function LogsPage({
                 type="button"
                 variant="destructive"
                 size="sm"
-                onClick={async () => {
-                  if (!confirm("确认清除所有日志？此操作不可恢复。")) return;
-                  try {
-                    const { deleted } = await clearAllLogs();
-                    toast.success(`已清除 ${deleted} 条日志`);
-                    setSelectedIds([]);
-                    setViewedId(null);
-                    setSelectedLog(null);
-                    void loadLogs();
-                  } catch {
-                    toast.error("清除失败");
-                  }
-                }}
+                onClick={() => void handleDeleteLogs()}
               >
-                Clear all
+                {selectedIds.length > 0 ? "Delete selected" : "Clear all"}
               </Button>
             </div>
           </div>
@@ -250,7 +331,7 @@ export function LogsPage({
               onToggleSelect={handleToggleSelect}
               viewedId={viewedId}
               onSelect={(log) => {
-                setSelectedLog(log);
+                setSelectedLogId(log.id);
                 setViewedId(log.id);
               }}
             />
@@ -259,13 +340,19 @@ export function LogsPage({
       </Card>
 
       <Sheet
-        open={!!selectedLog}
-        onOpenChange={(open) => !open && setSelectedLog(null)}
+        open={selectedLogId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedLogId(null);
+            setSelectedLog(null);
+            setDetailError(null);
+          }
+        }}
       >
         <SheetContent className="sm:max-w-5xl overflow-y-auto">
           <SheetHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <SheetTitle>Request Detail #{selectedLog?.id}</SheetTitle>
+              <SheetTitle>Request Detail #{selectedLogId ?? "--"}</SheetTitle>
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -274,7 +361,7 @@ export function LogsPage({
                   disabled={!previousLog}
                   onClick={() => {
                     if (!previousLog) return;
-                    setSelectedLog(previousLog);
+                    setSelectedLogId(previousLog.id);
                     setViewedId(previousLog.id);
                   }}
                 >
@@ -288,7 +375,7 @@ export function LogsPage({
                   disabled={!nextLog}
                   onClick={() => {
                     if (!nextLog) return;
-                    setSelectedLog(nextLog);
+                    setSelectedLogId(nextLog.id);
                     setViewedId(nextLog.id);
                   }}
                 >
@@ -298,15 +385,24 @@ export function LogsPage({
               </div>
             </div>
           </SheetHeader>
-          {selectedLog && (
+          {detailLoading ? (
+            <div className="flex flex-col gap-3 p-4">
+              <Skeleton className="h-8 w-1/2" />
+              <Skeleton className="h-40 w-full" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          ) : detailError ? (
+            <div className="p-4 text-sm text-destructive">{detailError}</div>
+          ) : selectedLog ? (
             <LogDetail
               log={selectedLog}
               onReplayComplete={(replayed) => {
+                setSelectedLogId(replayed.id);
                 setSelectedLog(replayed);
                 void loadLogs();
               }}
             />
-          )}
+          ) : null}
         </SheetContent>
       </Sheet>
     </div>

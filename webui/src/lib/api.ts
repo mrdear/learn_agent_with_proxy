@@ -1,15 +1,9 @@
-export interface LogEntry {
+export interface LogEntryBase {
   id: number;
   provider: string;
   endpoint: string;
-  upstream_url: string | null;
   method: string;
-  request_headers: string | null;
-  request_body: string | null;
-  source_log_id: number | null;
   response_status: number | null;
-  response_body: string | null;
-  response_body_finish: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
   request_time: string;
@@ -17,12 +11,32 @@ export interface LogEntry {
   duration_ms: number | null;
   model: string | null;
   is_streaming: number;
+  source_log_id: number | null;
   error: string | null;
   created_at: string;
 }
 
+export interface LogEntry extends LogEntryBase {
+  upstream_url: string | null;
+  request_headers: string | null;
+  request_body: string | null;
+  response_body: string | null;
+  response_body_finish: string | null;
+}
+
+export interface LogListEntry extends LogEntryBase {
+  has_upstream_url: number;
+  request_preview: string | null;
+  response_preview: string | null;
+  request_body_size: number | null;
+  response_body_size: number | null;
+  message_count: number | null;
+  tools_defined_count: number | null;
+  tool_call_count: number | null;
+}
+
 export interface LogListResponse {
-  data: LogEntry[];
+  data: LogListEntry[];
   total: number;
   page: number;
   pageSize: number;
@@ -102,6 +116,9 @@ export async function fetchLogs(params: {
 
 export async function fetchLogById(id: number): Promise<LogEntry> {
   const res = await fetch(`${BASE}/logs/${id}`);
+  if (!res.ok) {
+    throw await readError(res, "Failed to load log detail");
+  }
   return res.json();
 }
 
@@ -110,10 +127,14 @@ export async function fetchModels(): Promise<string[]> {
   return res.json();
 }
 
-export async function clearAllLogs(): Promise<{ deleted: number }> {
-  const res = await fetch(`${BASE}/logs`, { method: "DELETE" });
+export async function deleteLogs(ids?: number[]): Promise<{ deleted: number }> {
+  const res = await fetch(`${BASE}/logs`, {
+    method: "DELETE",
+    headers: ids ? { "Content-Type": "application/json" } : undefined,
+    body: ids ? JSON.stringify({ ids }) : undefined,
+  });
   if (!res.ok) {
-    throw new Error("Failed to clear logs");
+    throw await readError(res, "Failed to delete logs");
   }
   return res.json();
 }
