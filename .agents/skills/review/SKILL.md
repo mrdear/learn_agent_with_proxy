@@ -1,6 +1,6 @@
 ---
 name: review
-description: Use near the end of a task, PR, branch, or implementation session to assess whether the whole task is complete, safe, coherent, tested, and aligned with the author's coding taste. Spawns or uses a read-only reviewer subagent when available.
+description: Use near the end of a task, PR, branch, or implementation session to assess whether the whole task is complete, safe, coherent, tested, and aligned with the author's coding taste. Spawns or uses the read-only reviewer subagent when available.
 ---
 
 # Review
@@ -15,17 +15,43 @@ The review should find real risks before style preferences.
 
 When custom agents are available, spawn the `reviewer` subagent for an independent read-only pass.
 
-Ask it to inspect the relevant diff, files, branch, or task result and return only actionable findings:
+Use these spawn settings by default:
+
+```text
+agent_type: reviewer
+fork_context: false
+```
+
+Use `fork_context: false` by default. The reviewer should not inherit the parent conversation; the parent agent must pass a compact review packet with the exact task intent and evidence. This keeps the reviewer independent and prevents it from relying on hidden context.
+
+Build the subagent prompt from this template:
 
 ```text
 Review the completed task as a read-only reviewer.
+
+Repository: <absolute repo path>
+User request: <original request or acceptance criteria>
+Change summary: <brief factual summary of what changed>
+
+Scope:
+- In scope: <changed files, modules, behavior, or commands to inspect>
+- Out of scope: <known unrelated dirty files, or "none known">
+
+Evidence:
+- Diff: <paste the relevant diff, or give exact git/file commands to inspect it>
+- Key files: <paths and line references when useful>
+- Verification: <commands run and results>
+- Not run: <commands skipped and why>
+
+Review instructions:
 Check whether the implementation satisfies the request, introduces regressions, misses tests, or leaves unreasonable design risks.
 Use the author's taste: simple readable structure, explicit contracts, restrained abstraction, readable duplication over bad abstraction.
-Return findings with severity, file/line, concrete risk, and focused fix direction.
+Return only actionable findings with severity, file/line, concrete risk, evidence, and focused fix direction.
+If the packet lacks essential context, say exactly what is missing instead of guessing.
 Do not edit files.
 ```
 
-The parent agent should keep working locally while the reviewer runs when there is useful non-overlapping work, such as reading the diff, running tests, or checking changed files.
+The parent agent should keep working locally while the review subagent runs when there is useful non-overlapping work, such as reading the diff, running tests, or checking changed files.
 
 After the subagent returns:
 
