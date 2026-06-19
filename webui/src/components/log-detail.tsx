@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { replayLog } from "@/lib/api";
 import { toast } from "sonner";
 import { LogRelayPanel } from "@/components/log-relay-panel";
-import { CaretRight, MagnifyingGlass } from "@phosphor-icons/react";
+import { CaretRight, Check, Copy, MagnifyingGlass } from "@phosphor-icons/react";
 import { JsonViewer } from "@/components/ui/json-viewer";
 import { MarkdownViewer } from "@/components/ui/markdown-viewer";
 import {
@@ -91,6 +91,14 @@ function getToolSchema(tool: ParsedTool): unknown {
   return tool.schema;
 }
 
+function formatToolResultText(contentText: string, parsedJson: unknown | null): string {
+  if (parsedJson !== null) {
+    return JSON.stringify(parsedJson, null, 2);
+  }
+
+  return contentText;
+}
+
 // ── Sub-components ──
 
 function JsonBlock({ label, block }: { label: string; block: ParsedJsonBlock | null }) {
@@ -106,6 +114,50 @@ function JsonBlock({ label, block }: { label: string; block: ParsedJsonBlock | n
           {block.text}
         </pre>
       )}
+    </div>
+  );
+}
+
+function ToolResultContent({
+  contentText,
+  parsedJson,
+}: {
+  contentText: string;
+  parsedJson: unknown | null;
+}) {
+  const [copied, setCopied] = useState(false);
+  const text = useMemo(
+    () => formatToolResultText(contentText, parsedJson),
+    [contentText, parsedJson],
+  );
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant={copied ? "secondary" : "outline"}
+          size="xs"
+          className="shadow-sm"
+          onClick={handleCopy}
+        >
+          {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      <pre className="max-h-[500px] overflow-auto rounded-md border border-border bg-muted/30 p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-words">
+        {text}
+      </pre>
     </div>
   );
 }
@@ -142,7 +194,9 @@ function MessageItem({ msg, index }: { msg: ParsedMessage; index: number }) {
       </div>
       {contentText && (
         <div className="p-3 overflow-x-auto max-h-[400px] overflow-y-auto">
-          {isJsonContent ? (
+          {msg.role === "tool" ? (
+            <ToolResultContent contentText={contentText} parsedJson={parsedJson} />
+          ) : isJsonContent ? (
             <JsonViewer data={parsedJson as object} />
           ) : (
             <MarkdownViewer content={contentText} />
@@ -291,7 +345,9 @@ function ResponseItem({ item, index }: { item: ParsedResponseItem; index: number
         )}
       </div>
       <div className="p-3 overflow-x-auto max-h-[400px] overflow-y-auto">
-        {isJsonContent ? (
+        {role === "tool" ? (
+          <ToolResultContent contentText={contentText} parsedJson={parsedJson} />
+        ) : isJsonContent ? (
           <JsonViewer data={parsedJson as object} />
         ) : (
           <MarkdownViewer content={contentText} />
