@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import JsonView, { ValueQuote } from "@uiw/react-json-view";
 import { githubDarkTheme } from "@uiw/react-json-view/githubDark";
 import { githubLightTheme } from "@uiw/react-json-view/githubLight";
@@ -164,7 +164,7 @@ function PreviewContent({ preview }: { preview: StringPreview }) {
       <JsonViewer
         data={parsedJson}
         enableStringPreview={false}
-        className="max-h-none"
+        className="max-h-none overflow-x-hidden"
       />
     );
   }
@@ -233,6 +233,11 @@ export function JsonViewer({
     }
   };
 
+  const closePreview = useCallback(() => {
+    setPreview(null);
+    setPreviewCopied(false);
+  }, []);
+
   return (
     <>
       <div className={cn("max-h-[600px] overflow-auto rounded-md border border-border bg-muted/30", className)}>
@@ -252,29 +257,27 @@ export function JsonViewer({
             "--w-rjv-font-family": "var(--font-mono, 'JetBrains Mono Variable', monospace)",
             "--w-rjv-background-color": "transparent",
             fontSize: "12px",
+            overflowWrap: "anywhere",
             padding: "12px",
           } as CSSProperties}
         >
-          {enableStringPreview && (
-            <JsonView.String
-              render={({ children, className: valueClassName, ...valueProps }, { type, value, keyName, keys }) => {
-                if (
-                  type !== "value" ||
-                  typeof value !== "string" ||
-                  value.length <= longTextPreviewThreshold
-                ) {
-                  return undefined;
-                }
+          <JsonView.String
+            render={({ children, className: valueClassName, ...valueProps }, { type, value, keyName, keys }) => {
+              if (type !== "value" || typeof value !== "string") {
+                return undefined;
+              }
 
-                const inlineValue = typeof children === "string" ? children : value;
+              const inlineValue = typeof children === "string" ? children : value;
+              const canPreviewValue = enableStringPreview && value.length > longTextPreviewThreshold;
 
-                return (
-                  <>
-                    <ValueQuote />
-                    <span {...valueProps} className={cn(valueClassName, "break-words")}>
-                      {truncateString(inlineValue)}
-                    </span>
-                    <ValueQuote />
+              return (
+                <>
+                  <ValueQuote />
+                  <span {...valueProps} className={cn(valueClassName, "whitespace-pre-wrap break-all")}>
+                    {canPreviewValue ? truncateString(inlineValue) : inlineValue}
+                  </span>
+                  <ValueQuote />
+                  {canPreviewValue && (
                     <Button
                       type="button"
                       variant="ghost"
@@ -292,11 +295,11 @@ export function JsonViewer({
                       <Eye data-icon="inline-start" />
                       <span className="sr-only">{t("Preview value", "预览值")}</span>
                     </Button>
-                  </>
-                );
-              }}
-            />
-          )}
+                  )}
+                </>
+              );
+            }}
+          />
         </JsonView>
       </div>
       <Dialog
@@ -304,13 +307,12 @@ export function JsonViewer({
         disablePointerDismissal={false}
         onOpenChange={(open) => {
           if (!open) {
-            setPreview(null);
-            setPreviewCopied(false);
+            closePreview();
           }
         }}
       >
         {preview && (
-          <DialogContent className="bg-background">
+          <DialogContent className="bg-background" onPointerDownOutside={closePreview}>
             <DialogHeader className="border-b border-border bg-background pr-12">
               <div className="flex min-w-0 items-center gap-2">
                 <DialogTitle className="truncate">

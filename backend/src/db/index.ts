@@ -179,6 +179,12 @@ type LogListQueryRow = LogListRow & {
   request_body_for_preview: string | null;
 };
 
+const requestListConditions = [
+  "endpoint != '/v1/models'",
+  "endpoint NOT LIKE '/v1/models?%'",
+  "endpoint NOT LIKE '/v1/models/%'",
+];
+
 export type ProviderName = "openai" | "anthropic" | "openai-responses";
 
 export interface ProviderConfigPublic {
@@ -505,7 +511,7 @@ export function getLogs(params: {
   model?: string;
   search?: string;
 }): { data: LogListRow[]; total: number } {
-  const conditions: string[] = [];
+  const conditions: string[] = [...requestListConditions];
   const values: Record<string, unknown> = {};
 
   if (params.provider) {
@@ -617,7 +623,14 @@ export function deleteLogs(ids: number[]): number {
 }
 
 export function getModels(): string[] {
-  const rows = db.prepare("SELECT DISTINCT model FROM logs WHERE model IS NOT NULL ORDER BY model").all() as { model: string }[];
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT model FROM logs
+       WHERE model IS NOT NULL
+         AND ${requestListConditions.join(" AND ")}
+       ORDER BY model`
+    )
+    .all() as { model: string }[];
   return rows.map((r) => r.model);
 }
 

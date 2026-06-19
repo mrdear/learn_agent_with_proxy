@@ -36,18 +36,78 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
   )
 }
 
+function stopDismissEvent(event: Event): void {
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+}
+
+function suppressCurrentOutsideClickSequence(targetWindow: Window): void {
+  const events = ["pointerup", "mousedown", "mouseup", "click", "touchend"] as const
+  const controller = new AbortController()
+
+  function stopAndCleanup(event: Event) {
+    stopDismissEvent(event)
+    if (event.type === "click" || event.type === "touchend") {
+      cleanup()
+    }
+  }
+
+  function cleanup() {
+    controller.abort()
+    targetWindow.clearTimeout(timeoutId)
+  }
+
+  for (const eventName of events) {
+    targetWindow.addEventListener(eventName, stopAndCleanup, {
+      capture: true,
+      signal: controller.signal,
+    })
+  }
+
+  const timeoutId = targetWindow.setTimeout(cleanup, 800)
+}
+
 function DialogContent({
   className,
   children,
+  onPointerDownOutside,
   showCloseButton = true,
   ...props
 }: DialogPrimitive.Popup.Props & {
+  onPointerDownOutside?: (event: PointerEvent) => void
   showCloseButton?: boolean
 }) {
+  const contentRef = React.useRef<HTMLDivElement | null>(null)
+
+  React.useEffect(() => {
+    if (!onPointerDownOutside) return
+    const handleOutside = onPointerDownOutside
+    const targetWindow = contentRef.current?.ownerDocument.defaultView ?? window
+
+    function handlePointerDown(event: PointerEvent) {
+      const content = contentRef.current
+      const target = event.target
+
+      if (!content || !(target instanceof Node)) return
+      if (event.composedPath().includes(content)) return
+
+      stopDismissEvent(event)
+      suppressCurrentOutsideClickSequence(targetWindow)
+      handleOutside(event)
+    }
+
+    targetWindow.addEventListener("pointerdown", handlePointerDown, true)
+    return () => {
+      targetWindow.removeEventListener("pointerdown", handlePointerDown, true)
+    }
+  }, [onPointerDownOutside])
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
+        ref={contentRef}
         data-slot="dialog-content"
         className={cn(
           "fixed top-1/2 left-1/2 z-50 flex max-h-[85svh] w-[min(960px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col border border-border bg-background bg-clip-padding text-xs/relaxed shadow-lg transition duration-150 ease-out data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0",

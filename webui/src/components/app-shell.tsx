@@ -23,7 +23,6 @@ import { appRoutes, getRouteMeta, type RoutePath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import {
   Moon,
-  SquaresFour,
   Sun,
   Translate,
   type Icon as PhosphorIcon,
@@ -119,8 +118,13 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
       <Sidebar side="left" collapsible="icon">
         <SidebarHeader className="px-4 pt-4">
           <div className="flex items-start gap-3 rounded-none border border-sidebar-border/70 bg-sidebar-accent/30 p-3 transition-all group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2">
-            <div className="flex size-10 shrink-0 items-center justify-center border border-sidebar-border bg-sidebar text-sidebar-foreground">
-              <SquaresFour />
+            <div className="flex size-10 shrink-0 items-center justify-center border border-sidebar-border bg-sidebar">
+              <img
+                src="/favicon.svg"
+                alt=""
+                className="size-7"
+                aria-hidden="true"
+              />
             </div>
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
               <p className="truncate text-sm font-semibold tracking-tight">
