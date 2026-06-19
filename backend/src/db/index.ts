@@ -175,6 +175,10 @@ export interface LogListRow {
   tool_call_count: number | null;
 }
 
+type LogListQueryRow = LogListRow & {
+  request_body_for_preview: string | null;
+};
+
 export type ProviderName = "openai" | "anthropic" | "openai-responses";
 
 export interface ProviderConfigPublic {
@@ -252,6 +256,86 @@ function stringifyHeaders(value: Record<string, string> | null | undefined): str
     }
   }
   return JSON.stringify(headers);
+}
+
+function normalizePreviewText(value: string | null | undefined): string | null {
+  const normalized = value?.replace(/\s+/g, " ").trim();
+  return normalized ? normalized.slice(0, 240) : null;
+}
+
+function contentToPreview(value: unknown): string | null {
+  if (typeof value === "string") {
+    return normalizePreviewText(value);
+  }
+
+  if (Array.isArray(value)) {
+    const text = value
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (!item || typeof item !== "object") return "";
+        const record = item as Record<string, unknown>;
+        if (typeof record.text === "string") return record.text;
+        if (typeof record.content === "string") return record.content;
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    return normalizePreviewText(text);
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.text === "string") {
+      return normalizePreviewText(record.text);
+    }
+    if (typeof record.content === "string") {
+      return normalizePreviewText(record.content);
+    }
+  }
+
+  return null;
+}
+
+function findFirstUserMessagePreview(messages: unknown): string | null {
+  if (!Array.isArray(messages)) {
+    return null;
+  }
+
+  for (const message of messages) {
+    if (!message || typeof message !== "object") continue;
+    const record = message as Record<string, unknown>;
+    if (record.role !== "user") continue;
+    const preview = contentToPreview(record.content);
+    if (preview) return preview;
+  }
+
+  return null;
+}
+
+function createRequestPreview(requestBody: string | null): string | null {
+  if (!requestBody) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(requestBody) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const body = parsed as Record<string, unknown>;
+      const messagePreview = findFirstUserMessagePreview(body.messages);
+      if (messagePreview) return messagePreview;
+
+      const input = body.input;
+      const inputMessagePreview = findFirstUserMessagePreview(input);
+      if (inputMessagePreview) return inputMessagePreview;
+
+      const inputPreview = contentToPreview(input);
+      if (inputPreview) return inputPreview;
+    }
+  } catch {
+    // Fallback to a raw preview below.
+  }
+
+  return normalizePreviewText(requestBody);
 }
 
 function createSecretHint(value: string | null): string | null {
@@ -466,10 +550,8 @@ export function getLogs(params: {
         source_log_id,
         error,
         created_at,
-        CASE
-          WHEN request_body IS NULL THEN NULL
-          ELSE substr(replace(replace(request_body, char(10), ' '), char(13), ' '), 1, 240)
-        END AS request_preview,
+        request_body AS request_body_for_preview,
+        NULL AS request_preview,
         CASE
           WHEN COALESCE(response_body_finish, response_body) IS NULL THEN NULL
           ELSE substr(replace(replace(COALESCE(response_body_finish, response_body), char(10), ' '), char(13), ' '), 1, 240)
@@ -503,9 +585,15 @@ export function getLogs(params: {
        ORDER BY id DESC
        LIMIT @limit OFFSET @offset`
     )
-    .all({ ...values, limit: params.pageSize, offset }) as LogListRow[];
+    .all({ ...values, limit: params.pageSize, offset }) as LogListQueryRow[];
 
-  return { data, total };
+  return {
+    data: data.map(({ request_body_for_preview, ...row }) => ({
+      ...row,
+      request_preview: createRequestPreview(request_body_for_preview),
+    })),
+    total,
+  };
 }
 
 export function getLogById(id: number): LogRow | undefined {

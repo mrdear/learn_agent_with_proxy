@@ -25,8 +25,10 @@ import {
   Moon,
   SquaresFour,
   Sun,
+  Translate,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
+import { useI18n } from "@/lib/i18n";
 
 interface AppShellProps {
   pathname: RoutePath;
@@ -62,9 +64,12 @@ function RouteButton({
 
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
+  const { t } = useI18n();
   const isDark = resolvedTheme === "dark";
   const nextTheme = isDark ? "light" : "dark";
-  const label = isDark ? "Switch to light mode" : "Switch to dark mode";
+  const label = isDark
+    ? t("Switch to light mode", "切换到浅色模式")
+    : t("Switch to dark mode", "切换到深色模式");
   const ThemeIcon = isDark ? Sun : Moon;
 
   return (
@@ -81,8 +86,33 @@ function ThemeToggle() {
   );
 }
 
+function LanguageToggle() {
+  const { locale, t, toggleLocale } = useI18n();
+  const nextLocaleLabel = locale === "zh-CN" ? "English" : "中文";
+  const label = t("Switch language to {locale}", "切换语言为 {locale}", {
+    locale: nextLocaleLabel,
+  });
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      title={label}
+      aria-label={label}
+      onClick={toggleLocale}
+    >
+      <Translate data-icon="inline-start" />
+      {locale === "zh-CN" ? "中文" : "EN"}
+    </Button>
+  );
+}
+
 export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
   const currentRoute = getRouteMeta(pathname);
+  const { formatText, t } = useI18n();
+  const currentRouteLabel = formatText(currentRoute.label);
+  const currentRouteDescription = formatText(currentRoute.description);
 
   return (
     <SidebarProvider defaultOpen className="bg-background text-foreground">
@@ -97,7 +127,7 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
                 Learn Agent With Proxy
               </p>
               <p className="truncate text-xs text-sidebar-foreground/70">
-                Prompt capture dashboard
+                {t("Prompt capture dashboard", "Prompt 捕获看板")}
               </p>
             </div>
           </div>
@@ -107,17 +137,18 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
 
         <SidebarContent className="px-2 py-3">
           <SidebarGroup className="gap-2">
-            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+            <SidebarGroupLabel>{t("Navigation", "导航")}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {appRoutes.map((route) => {
                   const RouteIcon = route.icon;
+                  const label = formatText(route.label);
 
                   return (
                     <RouteButton
                       key={route.path}
                       active={pathname === route.path}
-                      label={route.label}
+                      label={label}
                       icon={RouteIcon}
                       onClick={() => onNavigate(route.path)}
                     />
@@ -134,15 +165,17 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
           <div className="flex flex-col gap-2 rounded-none border border-sidebar-border/70 bg-sidebar-accent/20 p-3 group-data-[collapsible=icon]:hidden">
             <div className="flex items-center justify-between gap-3">
               <Badge variant="secondary" className="w-fit shadow-none">
-                Local proxy
+                {t("Local proxy", "本地代理")}
               </Badge>
               <span className="text-[10px] uppercase tracking-[0.2em] text-sidebar-foreground/60">
-                Ready
+                {t("Ready", "就绪")}
               </span>
             </div>
             <p className="text-xs text-sidebar-foreground/70">
-              Route SDK traffic through the local proxy to inspect prompts,
-              tokens, and streamed chunks.
+              {t(
+                "Route SDK traffic through the local proxy to inspect prompts, tokens, and streamed chunks.",
+                "把 SDK 流量接到本地代理，用来查看 prompt、token 和流式分块。"
+              )}
             </p>
             <div className="rounded-none border border-sidebar-border/70 bg-sidebar p-2 font-mono text-[11px] text-sidebar-foreground/80">
               http://localhost:3000
@@ -162,14 +195,17 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
                 <div className="min-w-0">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <Badge variant="secondary" className="shadow-sm">
-                      {currentRoute.label}
+                      {currentRouteLabel}
                     </Badge>
                     <p className="truncate text-sm font-medium tracking-tight">
-                      {currentRoute.description}
+                      {currentRouteDescription}
                     </p>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Local dashboard for proxy capture and prompt inspection.
+                    {t(
+                      "Local dashboard for proxy capture and prompt inspection.",
+                      "用于代理捕获和 prompt 检查的本地看板。"
+                    )}
                   </p>
                 </div>
               </div>
@@ -181,6 +217,7 @@ export function AppShell({ pathname, onNavigate, children }: AppShellProps) {
                 >
                   http://localhost:3000
                 </Badge>
+                <LanguageToggle />
                 <ThemeToggle />
               </div>
             </div>

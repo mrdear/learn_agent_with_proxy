@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useI18n, type Locale } from "@/lib/i18n";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 
 interface LogTableProps {
@@ -84,9 +85,9 @@ function StatusBadge({ status }: { status: number | null }) {
   return <Badge variant={variant}>{status}</Badge>;
 }
 
-function formatTime(iso: string): string {
+function formatTime(iso: string, locale: Locale): string {
   const d = new Date(iso);
-  return d.toLocaleString("zh-CN", {
+  return d.toLocaleString(locale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -148,19 +149,20 @@ function PreviewLine({
 }
 
 function SignalBadges({ log }: { log: LogListEntry }) {
+  const { t } = useI18n();
   const signals: Array<{ label: string; variant: "outline" | "secondary" | "destructive" }> = [];
 
   if (log.error || (log.response_status !== null && log.response_status >= 400)) {
-    signals.push({ label: "error", variant: "destructive" });
+    signals.push({ label: t("error", "错误"), variant: "destructive" });
   }
   if (!log.has_upstream_url) {
-    signals.push({ label: "no upstream", variant: "outline" });
+    signals.push({ label: t("no upstream", "无上游"), variant: "outline" });
   }
   if (log.source_log_id) {
-    signals.push({ label: "replay", variant: "secondary" });
+    signals.push({ label: t("replay", "重放"), variant: "secondary" });
   }
   if (log.duration_ms !== null && log.duration_ms >= 10000) {
-    signals.push({ label: "slow", variant: "outline" });
+    signals.push({ label: t("slow", "慢"), variant: "outline" });
   }
 
   if (signals.length === 0) {
@@ -178,14 +180,14 @@ function SignalBadges({ log }: { log: LogListEntry }) {
   );
 }
 
-function formatGroupTimeRange(startTime: number, endTime: number): string {
+function formatGroupTimeRange(startTime: number, endTime: number, locale: Locale): string {
   const start = new Date(startTime);
   const end = new Date(endTime);
-  const date = start.toLocaleDateString("zh-CN", {
+  const date = start.toLocaleDateString(locale, {
     month: "2-digit",
     day: "2-digit",
   });
-  const timeFormat = new Intl.DateTimeFormat("zh-CN", {
+  const timeFormat = new Intl.DateTimeFormat(locale, {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -237,6 +239,8 @@ function LogRow({
   onToggleSelect: (log: LogListEntry, checked: boolean) => void;
   onSelect: (log: LogListEntry) => void;
 }) {
+  const { locale, t } = useI18n();
+
   return (
     <TableRow
       key={log.id}
@@ -250,7 +254,7 @@ function LogRow({
       <TableCell onClick={(event) => event.stopPropagation()}>
         <Checkbox
           checked={selected}
-          aria-label={`Select log ${log.id}`}
+          aria-label={t("Select log {id}", "选择日志 {id}", { id: log.id })}
           onCheckedChange={(checked) => onToggleSelect(log, checked === true)}
         />
       </TableCell>
@@ -259,7 +263,7 @@ function LogRow({
           <span>{log.id}</span>
           {log.source_log_id ? (
             <Badge variant="outline" className="w-fit text-[10px]">
-              from #{log.source_log_id}
+              {t("from #{id}", "来自 #{id}", { id: log.source_log_id })}
             </Badge>
           ) : null}
         </div>
@@ -278,8 +282,8 @@ function LogRow({
       </TableCell>
       <TableCell className="whitespace-normal text-xs">
         <div className="flex flex-col gap-1">
-          <PreviewLine label="Request" preview={log.request_preview} />
-          <PreviewLine label="Response" preview={log.response_preview} />
+          <PreviewLine label={t("Request", "请求")} preview={log.request_preview} />
+          <PreviewLine label={t("Response", "响应")} preview={log.response_preview} />
         </div>
       </TableCell>
       <TableCell
@@ -296,12 +300,12 @@ function LogRow({
         )}
       </TableCell>
       <TableCell>
-        <CountBadge value={log.message_count} label="msg" />
+        <CountBadge value={log.message_count} label={t("msg", "消息")} />
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap gap-1">
-          <CountBadge value={log.tools_defined_count} label="def" />
-          <CountBadge value={log.tool_call_count} label="call" />
+          <CountBadge value={log.tools_defined_count} label={t("def", "定义")} />
+          <CountBadge value={log.tool_call_count} label={t("call", "调用")} />
         </div>
       </TableCell>
       <TableCell className="font-mono text-xs">
@@ -314,7 +318,7 @@ function LogRow({
         <SignalBadges log={log} />
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {formatTime(log.request_time)}
+        {formatTime(log.request_time, locale)}
       </TableCell>
     </TableRow>
   );
@@ -332,6 +336,7 @@ export function LogTable({
   onToggleSelect,
   onSelect,
 }: LogTableProps) {
+  const { locale, t } = useI18n();
   const groupedLogs = groupLogs(logs, groupGapMs);
 
   if (loading) {
@@ -347,9 +352,12 @@ export function LogTable({
   if (logs.length === 0) {
     return (
       <div className="flex h-full min-h-[420px] flex-col items-center justify-center text-muted-foreground">
-        <p className="text-lg">No logs captured yet</p>
+        <p className="text-lg">{t("No logs captured yet", "还没有捕获日志")}</p>
         <p className="mt-1 text-sm">
-          Point your AI SDK to this proxy server to start capturing requests
+          {t(
+            "Point your AI SDK to this proxy server to start capturing requests",
+            "把 AI SDK 指向这个代理服务后就会开始捕获请求"
+          )}
         </p>
       </div>
     );
@@ -362,21 +370,21 @@ export function LogTable({
           <TableHeader>
             <TableRow>
               <TableHead className="w-[44px]">
-                <span className="sr-only">Select</span>
+                <span className="sr-only">{t("Select", "选择")}</span>
               </TableHead>
               <TableHead className="w-[56px]">ID</TableHead>
               <TableHead className="w-[90px]">Provider</TableHead>
-              <TableHead className="w-[72px]">Status</TableHead>
-              <TableHead className="w-[180px]">Model</TableHead>
-              <TableHead className="w-[330px]">User Messages</TableHead>
+              <TableHead className="w-[72px]">{t("Status", "状态")}</TableHead>
+              <TableHead className="w-[180px]">{t("Model", "模型")}</TableHead>
+              <TableHead className="w-[330px]">{t("User Messages", "用户消息")}</TableHead>
               <TableHead className="w-[210px]">Endpoint</TableHead>
-              <TableHead className="w-[70px]">Stream</TableHead>
-              <TableHead className="w-[80px]">Messages</TableHead>
-              <TableHead className="w-[115px]">Tools</TableHead>
+              <TableHead className="w-[70px]">{t("Stream", "流式")}</TableHead>
+              <TableHead className="w-[80px]">{t("Messages", "消息")}</TableHead>
+              <TableHead className="w-[115px]">{t("Tools", "工具")}</TableHead>
               <TableHead className="w-[105px]">Tokens</TableHead>
-              <TableHead className="w-[75px]">Duration</TableHead>
-              <TableHead className="w-[120px]">Signals</TableHead>
-              <TableHead className="w-[115px]">Time</TableHead>
+              <TableHead className="w-[75px]">{t("Duration", "耗时")}</TableHead>
+              <TableHead className="w-[120px]">{t("Signals", "信号")}</TableHead>
+              <TableHead className="w-[115px]">{t("Time", "时间")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -396,10 +404,12 @@ export function LogTable({
                         />
                         <ProviderBadge provider={group.provider} />
                         <span className="font-mono text-xs text-muted-foreground">
-                          {formatGroupTimeRange(group.startTime, group.endTime)}
+                          {formatGroupTimeRange(group.startTime, group.endTime, locale)}
                         </span>
                         <Badge variant="outline">
-                          {group.logs.length} requests
+                          {t("{count} requests", "{count} 条请求", {
+                            count: group.logs.length,
+                          })}
                         </Badge>
                       </div>
                     </TableCell>
@@ -426,7 +436,10 @@ export function LogTable({
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages}
+            {t("Page {page} of {total}", "第 {page} / {total} 页", {
+              page,
+              total: totalPages,
+            })}
           </p>
           <div className="flex items-center gap-2">
             <Button

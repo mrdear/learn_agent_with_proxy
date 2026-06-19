@@ -24,6 +24,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { saveCompareSelection } from "@/lib/compare-selection";
+import { useI18n } from "@/lib/i18n";
 import type { RoutePath } from "@/lib/routes";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 
@@ -56,6 +57,7 @@ export function LogsPage({
 }: {
   onNavigate: (path: RoutePath) => void;
 }) {
+  const { t } = useI18n();
   const storedFilters = useMemo(readStoredFilters, []);
   const [logs, setLogs] = useState<LogListEntry[]>([]);
   const [total, setTotal] = useState(0);
@@ -78,14 +80,25 @@ export function LogsPage({
 
   const compareEnabled = selectedIds.length === 2;
   const selectedLabel = useMemo(() => {
-    if (selectedIds.length === 0) return "Select two logs to compare";
-    if (selectedIds.length === 1) return "Select one more log to compare";
+    if (selectedIds.length === 0) {
+      return t("Select two logs to compare", "选择两条日志进行对比");
+    }
+    if (selectedIds.length === 1) {
+      return t("Select one more log to compare", "再选择一条日志进行对比");
+    }
     if (selectedIds.length === 2) {
-      return `Ready to compare #${selectedIds[0]} and #${selectedIds[1]}`;
+      return t("Ready to compare #{left} and #{right}", "已选择 #{left} 和 #{right}，可以对比", {
+        left: selectedIds[0],
+        right: selectedIds[1],
+      });
     }
 
-    return `Selected ${selectedIds.length} logs. Keep only two to compare.`;
-  }, [selectedIds]);
+    return t(
+      "Selected {count} logs. Keep only two to compare.",
+      "已选择 {count} 条日志，只保留两条才能对比。",
+      { count: selectedIds.length }
+    );
+  }, [selectedIds, t]);
 
   const selectedLogIndex = useMemo(() => {
     if (selectedLogId === null) return -1;
@@ -140,7 +153,7 @@ export function LogsPage({
         setSelectedLog(log);
       })
       .catch((error) => {
-        const message = error instanceof Error ? error.message : "详情加载失败";
+        const message = error instanceof Error ? error.message : t("Failed to load detail", "详情加载失败");
         if (!active) return;
         setDetailError(message);
         toast.error(message);
@@ -154,7 +167,7 @@ export function LogsPage({
     return () => {
       active = false;
     };
-  }, [selectedLogId]);
+  }, [selectedLogId, t]);
 
   useEffect(() => {
     fetchModels().then(setModels).catch(console.error);
@@ -193,14 +206,26 @@ export function LogsPage({
     const idsToDelete = selectedIds.length > 0 ? selectedIds : undefined;
     const deletingSelected = Boolean(idsToDelete);
     const confirmMessage = deletingSelected
-      ? `确认删除选中的 ${selectedIds.length} 条日志？此操作不可恢复。`
-      : "确认清除所有日志？此操作不可恢复。";
+      ? t(
+          "Delete {count} selected logs? This cannot be undone.",
+          "确认删除选中的 {count} 条日志？此操作不可恢复。",
+          { count: selectedIds.length }
+        )
+      : t("Clear all logs? This cannot be undone.", "确认清除所有日志？此操作不可恢复。");
 
     if (!confirm(confirmMessage)) return;
 
     try {
       const { deleted } = await deleteLogs(idsToDelete);
-      toast.success(deletingSelected ? `已删除 ${deleted} 条选中日志` : `已清除 ${deleted} 条日志`);
+      toast.success(
+        deletingSelected
+          ? t("Deleted {count} selected logs", "已删除 {count} 条选中日志", {
+              count: deleted,
+            })
+          : t("Cleared {count} logs", "已清除 {count} 条日志", {
+              count: deleted,
+            })
+      );
 
       const deletedIds = new Set(idsToDelete ?? []);
       const remainingLogsOnPage = idsToDelete
@@ -231,9 +256,9 @@ export function LogsPage({
 
       void loadLogs();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "删除失败");
+      toast.error(error instanceof Error ? error.message : t("Delete failed", "删除失败"));
     }
-  }, [loadLogs, logs, page, selectedIds, selectedLogId]);
+  }, [loadLogs, logs, page, selectedIds, selectedLogId, t]);
 
   const clearSelection = useCallback(() => {
     setSelectedIds([]);
@@ -246,16 +271,21 @@ export function LogsPage({
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="flex flex-col gap-1">
               <Badge variant="default" className="w-fit shadow-sm">
-                Captured traffic
+                {t("Captured traffic", "已捕获流量")}
               </Badge>
-              <CardTitle className="text-2xl">Request log explorer</CardTitle>
+              <CardTitle className="text-2xl">
+                {t("Request log explorer", "请求日志浏览器")}
+              </CardTitle>
               <CardDescription>
-                Inspect prompts, parameters, token counts, and streamed response chunks.
+                {t(
+                  "Inspect prompts, parameters, token counts, and streamed response chunks.",
+                  "查看 prompt、参数、token 数和流式响应分块。"
+                )}
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="default" className="w-fit shadow-sm">
-                {total} records
+                {t("{count} records", "{count} 条记录", { count: total })}
               </Badge>
               <Button
                 type="button"
@@ -263,7 +293,9 @@ export function LogsPage({
                 size="sm"
                 onClick={() => void handleDeleteLogs()}
               >
-                {selectedIds.length > 0 ? "Delete selected" : "Clear all"}
+                {selectedIds.length > 0
+                  ? t("Delete selected", "删除选中")
+                  : t("Clear all", "清除全部")}
               </Button>
             </div>
           </div>
@@ -275,14 +307,16 @@ export function LogsPage({
                 variant={compareEnabled ? "default" : "secondary"}
                 className="w-fit shadow-sm"
               >
-                {selectedIds.length} selected
+                {t("{count} selected", "已选 {count} 条", {
+                  count: selectedIds.length,
+                })}
               </Badge>
               <p className="text-xs text-muted-foreground">{selectedLabel}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {selectedIds.length > 0 && (
                 <Button type="button" variant="outline" size="sm" onClick={clearSelection}>
-                  Clear selection
+                  {t("Clear selection", "清除选择")}
                 </Button>
               )}
               <Button
@@ -292,7 +326,7 @@ export function LogsPage({
                 className="shadow-sm"
                 onClick={handleCompare}
               >
-                Compare selected
+                {t("Compare selected", "对比选中")}
               </Button>
             </div>
           </div>
@@ -352,7 +386,11 @@ export function LogsPage({
         <SheetContent className="sm:max-w-5xl overflow-y-auto">
           <SheetHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <SheetTitle>Request Detail #{selectedLogId ?? "--"}</SheetTitle>
+              <SheetTitle>
+                {t("Request detail #{id}", "请求详情 #{id}", {
+                  id: selectedLogId ?? "--",
+                })}
+              </SheetTitle>
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -366,7 +404,7 @@ export function LogsPage({
                   }}
                 >
                   <CaretLeft data-icon="inline-start" />
-                  Previous
+                  {t("Previous", "上一条")}
                 </Button>
                 <Button
                   type="button"
@@ -379,7 +417,7 @@ export function LogsPage({
                     setViewedId(nextLog.id);
                   }}
                 >
-                  Next
+                  {t("Next", "下一条")}
                   <CaretRight data-icon="inline-end" />
                 </Button>
               </div>

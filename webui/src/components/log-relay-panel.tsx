@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { JsonViewer } from "@/components/ui/json-viewer";
+import { useI18n } from "@/lib/i18n";
 
 interface LogRelayPanelProps {
   log: LogEntry;
@@ -25,6 +26,7 @@ function formatBody(requestBody: string | null): string {
 }
 
 export function LogRelayPanel({ log, onRelay, disabled = false }: LogRelayPanelProps) {
+  const { t } = useI18n();
   const originalBody = useMemo(() => formatBody(log.request_body), [log.request_body]);
   const [endpoint, setEndpoint] = useState(log.endpoint);
   const [method, setMethod] = useState(log.method);
@@ -55,15 +57,19 @@ export function LogRelayPanel({ log, onRelay, disabled = false }: LogRelayPanelP
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <Badge variant="outline" className="w-fit">
-            Provider: {log.provider}
+            {t("Provider: {provider}", "Provider：{provider}", {
+              provider: log.provider,
+            })}
           </Badge>
           <p className="text-xs text-muted-foreground">
-            Exact replay keeps the original auth headers. Relay lets you edit the
-            path, method, and raw body before resending.
+            {t(
+              "Exact replay keeps the original auth headers. Relay lets you edit the path, method, and raw body before resending.",
+              "原样重放会保留原始鉴权请求头。Relay 允许你在重新发送前编辑 path、method 和原始 body。"
+            )}
           </p>
         </div>
         <Badge variant={hasChanges ? "default" : "secondary"} className="shadow-sm">
-          {hasChanges ? "Edited" : "Original"}
+          {hasChanges ? t("Edited", "已编辑") : t("Original", "原始")}
         </Badge>
       </div>
 
@@ -95,7 +101,7 @@ export function LogRelayPanel({ log, onRelay, disabled = false }: LogRelayPanelP
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
           <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-            Request Body
+            {t("Request Body", "请求体")}
           </p>
           <Button
             type="button"
@@ -104,7 +110,7 @@ export function LogRelayPanel({ log, onRelay, disabled = false }: LogRelayPanelP
             className="h-6 text-[10px] px-2"
             onClick={() => setEditMode((v) => !v)}
           >
-            {editMode ? "Preview" : "Edit"}
+            {editMode ? t("Preview", "预览") : t("Edit", "编辑")}
           </Button>
         </div>
         {editMode ? (
@@ -121,15 +127,17 @@ export function LogRelayPanel({ log, onRelay, disabled = false }: LogRelayPanelP
           <JsonViewer data={bodyJson} />
         ) : (
           <pre className="min-h-[260px] w-full rounded-md border border-input bg-muted px-3 py-2 font-mono text-xs leading-6 overflow-auto max-h-[600px] whitespace-pre-wrap break-all">
-            {body || "(empty)"}
+            {body || t("(empty)", "(空)")}
           </pre>
         )}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          The relay keeps the original headers, so you can focus on prompt and
-          parameter changes.
+          {t(
+            "The relay keeps the original headers, so you can focus on prompt and parameter changes.",
+            "Relay 会保留原始 headers，你可以只关注 prompt 和参数变化。"
+          )}
         </p>
         <Button
           type="button"
@@ -151,7 +159,7 @@ export function LogRelayPanel({ log, onRelay, disabled = false }: LogRelayPanelP
             }
           }}
         >
-          {sending ? "Sending..." : "Relay edits"}
+          {sending ? t("Sending...", "发送中...") : t("Relay edits", "转发修改")}
         </Button>
       </div>
     </div>

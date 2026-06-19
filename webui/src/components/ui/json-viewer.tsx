@@ -4,7 +4,7 @@ import { githubDarkTheme } from "@uiw/react-json-view/githubDark";
 import { githubLightTheme } from "@uiw/react-json-view/githubLight";
 import type { ShouldExpandNodeInitially } from "@uiw/react-json-view";
 import { useTheme } from "next-themes";
-import { Eye } from "@phosphor-icons/react";
+import { Check, Copy, Eye } from "@phosphor-icons/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { MarkdownViewer } from "@/components/ui/markdown-viewer";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface JsonViewerProps {
@@ -141,13 +142,18 @@ function truncateString(value: string): string {
 }
 
 function PreviewContent({ preview }: { preview: StringPreview }) {
+  const { t } = useI18n();
+
   if (preview.mode === "json") {
     const parsedJson = preview.parsedJson ?? parseJsonString(preview.value);
     if (parsedJson === undefined) {
       return (
         <div className="flex flex-col gap-3">
-          <div className="rounded-md border border-border bg-background/70 px-3 py-2 text-xs text-muted-foreground">
-            Current value is not parseable as JSON.
+          <div className="rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground shadow-sm">
+            {t(
+              "Current value is not parseable as JSON.",
+              "当前值不能解析为 JSON。"
+            )}
           </div>
           <PlainPreview value={preview.value} />
         </div>
@@ -167,7 +173,7 @@ function PreviewContent({ preview }: { preview: StringPreview }) {
     return (
       <MarkdownViewer
         content={preview.value}
-        className="rounded-md border border-border bg-background/70 p-3"
+        className="rounded-md border border-border bg-background p-3 shadow-sm"
       />
     );
   }
@@ -177,10 +183,21 @@ function PreviewContent({ preview }: { preview: StringPreview }) {
 
 function PlainPreview({ value }: { value: string }) {
   return (
-    <pre className="whitespace-pre-wrap break-words rounded-md border border-border bg-background/70 p-3 font-mono text-xs/relaxed text-foreground">
+    <pre className="whitespace-pre-wrap break-words rounded-md border border-border bg-background p-3 font-mono text-xs/relaxed text-foreground shadow-sm">
       {value}
     </pre>
   );
+}
+
+function getPreviewCopyText(preview: StringPreview): string {
+  if (preview.mode === "json") {
+    const parsedJson = preview.parsedJson ?? parseJsonString(preview.value);
+    if (parsedJson !== undefined) {
+      return JSON.stringify(parsedJson, null, 2);
+    }
+  }
+
+  return preview.value;
 }
 
 export function JsonViewer({
@@ -191,7 +208,9 @@ export function JsonViewer({
   longTextPreviewThreshold = DEFAULT_LONG_TEXT_PREVIEW_THRESHOLD,
 }: JsonViewerProps) {
   const { resolvedTheme } = useTheme();
+  const { t } = useI18n();
   const [preview, setPreview] = useState<StringPreview | null>(null);
+  const [previewCopied, setPreviewCopied] = useState(false);
   const theme = resolvedTheme === "dark" ? githubDarkTheme : githubLightTheme;
   const shouldExpandArrayNode: ShouldExpandNodeInitially<object> = useMemo(
     () => (shouldExpand, { value }) => {
@@ -203,6 +222,16 @@ export function JsonViewer({
     },
     [arrayCollapseThreshold]
   );
+
+  const handleCopyPreview = async (currentPreview: StringPreview) => {
+    try {
+      await navigator.clipboard.writeText(getPreviewCopyText(currentPreview));
+      setPreviewCopied(true);
+      window.setTimeout(() => setPreviewCopied(false), 1200);
+    } catch {
+      setPreviewCopied(false);
+    }
+  };
 
   return (
     <>
@@ -251,16 +280,17 @@ export function JsonViewer({
                       variant="ghost"
                       size="icon-xs"
                       className="ml-1 align-middle text-muted-foreground"
-                      title="Preview value"
-                      aria-label="Preview value"
+                      title={t("Preview value", "预览值")}
+                      aria-label={t("Preview value", "预览值")}
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
+                        setPreviewCopied(false);
                         setPreview(createStringPreview(keyName, keys, value));
                       }}
                     >
                       <Eye data-icon="inline-start" />
-                      <span className="sr-only">Preview value</span>
+                      <span className="sr-only">{t("Preview value", "预览值")}</span>
                     </Button>
                   </>
                 );
@@ -275,21 +305,26 @@ export function JsonViewer({
         onOpenChange={(open) => {
           if (!open) {
             setPreview(null);
+            setPreviewCopied(false);
           }
         }}
       >
         {preview && (
-          <DialogContent className="bg-muted/30">
-            <DialogHeader className="border-b border-border pr-12">
+          <DialogContent className="bg-background">
+            <DialogHeader className="border-b border-border bg-background pr-12">
               <div className="flex min-w-0 items-center gap-2">
-                <DialogTitle className="truncate">Value preview</DialogTitle>
-                <Badge variant="outline">Auto: {preview.detectedMode}</Badge>
+                <DialogTitle className="truncate">
+                  {t("Value preview", "值预览")}
+                </DialogTitle>
+                <Badge variant="outline">
+                  {t("Auto: {mode}", "自动：{mode}", { mode: preview.detectedMode })}
+                </Badge>
               </div>
               <DialogDescription className="break-all font-mono">
                 {preview.keyPath}
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted px-4 py-2">
               <ToggleGroup
                 variant="outline"
                 size="sm"
@@ -300,18 +335,36 @@ export function JsonViewer({
                     return;
                   }
 
+                  setPreviewCopied(false);
                   setPreview({ ...preview, mode: nextMode });
                 }}
               >
-                <ToggleGroupItem value="plain">Plain</ToggleGroupItem>
+                <ToggleGroupItem value="plain">{t("Plain", "纯文本")}</ToggleGroupItem>
                 <ToggleGroupItem value="markdown">Markdown</ToggleGroupItem>
                 <ToggleGroupItem value="json">JSON</ToggleGroupItem>
               </ToggleGroup>
-              <span className="text-xs text-muted-foreground">
-                Preview as {preview.mode}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {t("Preview as {mode}", "预览为 {mode}", {
+                    mode: preview.mode,
+                  })}
+                </span>
+                <Button
+                  type="button"
+                  variant={previewCopied ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => void handleCopyPreview(preview)}
+                >
+                  {previewCopied ? (
+                    <Check data-icon="inline-start" />
+                  ) : (
+                    <Copy data-icon="inline-start" />
+                  )}
+                  {previewCopied ? t("Copied", "已复制") : t("Copy", "复制")}
+                </Button>
+              </div>
             </div>
-            <div className="min-h-0 overflow-auto bg-muted/30 p-4">
+            <div className="min-h-0 overflow-auto bg-muted p-4">
               <PreviewContent preview={preview} />
             </div>
           </DialogContent>

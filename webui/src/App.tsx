@@ -5,6 +5,7 @@ import { DashboardPage } from "@/pages/dashboard-page";
 import { LogsPage } from "@/pages/logs-page";
 import { SettingsPage } from "@/pages/settings-page";
 import { getRouteMeta, normalizeRoute, type RoutePath } from "@/lib/routes";
+import { useI18n } from "@/lib/i18n";
 
 function useRouteState() {
   const pathname = useSyncExternalStore<RoutePath>(
@@ -43,10 +44,12 @@ function useRouteState() {
 function App() {
   const { pathname, navigate } = useRouteState();
   const currentRoute = getRouteMeta(pathname);
+  const { formatText } = useI18n();
+  const currentRouteLabel = formatText(currentRoute.label);
 
   useEffect(() => {
-    document.title = `${currentRoute.label} · Learn Agent With Proxy`;
-  }, [currentRoute.label]);
+    document.title = `${currentRouteLabel} · Learn Agent With Proxy`;
+  }, [currentRouteLabel]);
 
   return (
     <AppShell pathname={pathname} onNavigate={navigate}>

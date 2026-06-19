@@ -14,6 +14,7 @@ import { LogDetail } from "@/components/log-detail";
 import { Separator } from "@/components/ui/separator";
 import { clearCompareSelection, loadCompareSelection } from "@/lib/compare-selection";
 import { parseLog, stringifyContent, type ParsedLog } from "@/lib/log-parsing";
+import { useI18n, type Locale } from "@/lib/i18n";
 import type { RoutePath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ArrowsClockwiseIcon } from "@phosphor-icons/react";
@@ -34,9 +35,9 @@ interface DiffSectionData {
   rows: DiffRowData[];
 }
 
-function formatTime(value: string | null): string {
+function formatTime(value: string | null, locale: Locale): string {
   if (!value) return "--";
-  return new Date(value).toLocaleString("zh-CN");
+  return new Date(value).toLocaleString(locale);
 }
 
 function display(value: string | number | boolean | null | undefined): string {
@@ -108,11 +109,11 @@ function hasOwnValue(value: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function statusLabel(status: DiffStatus): string {
-  if (status === "same") return "Same";
-  if (status === "left-only") return "Left only";
-  if (status === "right-only") return "Right only";
-  return "Different";
+function statusLabel(status: DiffStatus, t: ReturnType<typeof useI18n>["t"]): string {
+  if (status === "same") return t("Same", "相同");
+  if (status === "left-only") return t("Left only", "仅左侧");
+  if (status === "right-only") return t("Right only", "仅右侧");
+  return t("Different", "不同");
 }
 
 function DiffValue({ value }: { value: string }) {
@@ -124,6 +125,7 @@ function DiffValue({ value }: { value: string }) {
 }
 
 function StructuredDiffRow({ row }: { row: DiffRowData }) {
+  const { t } = useI18n();
   const same = row.status === "same";
 
   return (
@@ -140,7 +142,7 @@ function StructuredDiffRow({ row }: { row: DiffRowData }) {
           {row.label}
         </span>
         <Badge variant={same ? "secondary" : "destructive"} className="w-fit">
-          {statusLabel(row.status)}
+          {statusLabel(row.status, t)}
         </Badge>
       </div>
       <DiffValue value={row.left} />
@@ -155,6 +157,7 @@ function StructuredDiffRow({ row }: { row: DiffRowData }) {
 }
 
 function DiffSection({ section }: { section: DiffSectionData }) {
+  const { t } = useI18n();
   const changed = section.rows.filter((row) => row.status !== "same").length;
 
   return (
@@ -166,9 +169,13 @@ function DiffSection({ section }: { section: DiffSectionData }) {
             <CardDescription>{section.description}</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{section.rows.length - changed} same</Badge>
+            <Badge variant="secondary">
+              {t("{count} same", "{count} 项相同", {
+                count: section.rows.length - changed,
+              })}
+            </Badge>
             <Badge variant={changed > 0 ? "destructive" : "outline"}>
-              {changed} changed
+              {t("{count} changed", "{count} 项变化", { count: changed })}
             </Badge>
           </div>
         </div>
@@ -180,7 +187,10 @@ function DiffSection({ section }: { section: DiffSectionData }) {
           ))
         ) : (
           <div className="border border-dashed border-border/80 p-6 text-sm text-muted-foreground">
-            No comparable data in this section.
+            {t(
+              "No comparable data in this section.",
+              "这个分区没有可对比数据。"
+            )}
           </div>
         )}
       </CardContent>
@@ -193,6 +203,7 @@ function DiffSummary({
 }: {
   sections: DiffSectionData[];
 }) {
+  const { t } = useI18n();
   const summaries = sections.map((section) => {
     const changed = section.rows.filter((row) => row.status !== "same");
     return {
@@ -208,11 +219,18 @@ function DiffSummary({
       <CardHeader className="border-b border-border/70">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <CardTitle>Change summary</CardTitle>
-            <CardDescription>先扫变化集中在哪些区域。</CardDescription>
+            <CardTitle>{t("Change summary", "变化摘要")}</CardTitle>
+            <CardDescription>
+              {t(
+                "Scan where changes are concentrated first.",
+                "先扫变化集中在哪些区域。"
+              )}
+            </CardDescription>
           </div>
           <Badge variant={changedSections.length > 0 ? "destructive" : "secondary"}>
-            {changedSections.length} sections changed
+            {t("{count} sections changed", "{count} 个分区有变化", {
+              count: changedSections.length,
+            })}
           </Badge>
         </div>
       </CardHeader>
@@ -236,7 +254,7 @@ function DiffSummary({
                 </Badge>
               </div>
               <p className="truncate text-xs text-muted-foreground">
-                {firstChanged ? firstChanged.label : "No changes"}
+                {firstChanged ? firstChanged.label : t("No changes", "没有变化")}
               </p>
             </div>
           );
@@ -246,17 +264,22 @@ function DiffSummary({
   );
 }
 
-function buildStructuredDiff(leftLog: LogEntry, rightLog: LogEntry): DiffSectionData[] {
+function buildStructuredDiff(
+  leftLog: LogEntry,
+  rightLog: LogEntry,
+  t: ReturnType<typeof useI18n>["t"],
+  locale: Locale
+): DiffSectionData[] {
   const left = parseLog(leftLog);
   const right = parseLog(rightLog);
 
   return [
-    buildOverviewSection(leftLog, rightLog, left, right),
-    buildSystemSection(left, right),
-    buildMessagesSection(left, right),
-    buildToolsSection(left, right),
-    buildParamsSection(left, right),
-    buildResponseSection(left, right),
+    buildOverviewSection(leftLog, rightLog, left, right, t, locale),
+    buildSystemSection(left, right, t),
+    buildMessagesSection(left, right, t),
+    buildToolsSection(left, right, t),
+    buildParamsSection(left, right, t),
+    buildResponseSection(left, right, t),
   ];
 }
 
@@ -264,31 +287,36 @@ function buildOverviewSection(
   leftLog: LogEntry,
   rightLog: LogEntry,
   left: ParsedLog,
-  right: ParsedLog
+  right: ParsedLog,
+  t: ReturnType<typeof useI18n>["t"],
+  locale: Locale
 ): DiffSectionData {
   return {
-    title: "Request overview",
-    description: "Provider、模型、Token、耗时等请求级字段。",
+    title: t("Request overview", "请求概览"),
+    description: t(
+      "Request-level fields such as provider, model, tokens, and duration.",
+      "Provider、模型、Token、耗时等请求级字段。"
+    ),
     rows: [
       createDiffRow("Provider", leftLog.provider, rightLog.provider),
       createDiffRow("Protocol", left.protocol, right.protocol),
       createDiffRow("Endpoint", leftLog.endpoint, rightLog.endpoint),
-      createDiffRow("Upstream URL", leftLog.upstream_url || "--", rightLog.upstream_url || "--"),
-      createDiffRow("Model", leftLog.model || "--", rightLog.model || "--"),
-      createDiffRow("Status", display(leftLog.response_status), display(rightLog.response_status)),
-      createDiffRow("Streaming", display(Boolean(leftLog.is_streaming)), display(Boolean(rightLog.is_streaming))),
-      createDiffRow("Input tokens", display(leftLog.input_tokens), display(rightLog.input_tokens)),
-      createDiffRow("Output tokens", display(leftLog.output_tokens), display(rightLog.output_tokens)),
-      createDiffRow("Duration", display(leftLog.duration_ms == null ? null : `${leftLog.duration_ms}ms`), display(rightLog.duration_ms == null ? null : `${rightLog.duration_ms}ms`)),
-      createDiffRow("Request time", formatTime(leftLog.request_time), formatTime(rightLog.request_time)),
+      createDiffRow(t("Upstream URL", "上游 URL"), leftLog.upstream_url || "--", rightLog.upstream_url || "--"),
+      createDiffRow(t("Model", "模型"), leftLog.model || "--", rightLog.model || "--"),
+      createDiffRow(t("Status", "状态"), display(leftLog.response_status), display(rightLog.response_status)),
+      createDiffRow(t("Streaming", "流式"), display(Boolean(leftLog.is_streaming)), display(Boolean(rightLog.is_streaming))),
+      createDiffRow(t("Input tokens", "输入 tokens"), display(leftLog.input_tokens), display(rightLog.input_tokens)),
+      createDiffRow(t("Output tokens", "输出 tokens"), display(leftLog.output_tokens), display(rightLog.output_tokens)),
+      createDiffRow(t("Duration", "耗时"), display(leftLog.duration_ms == null ? null : `${leftLog.duration_ms}ms`), display(rightLog.duration_ms == null ? null : `${rightLog.duration_ms}ms`)),
+      createDiffRow(t("Request time", "请求时间"), formatTime(leftLog.request_time, locale), formatTime(rightLog.request_time, locale)),
     ],
   };
 }
 
-function buildSystemSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
+function buildSystemSection(left: ParsedLog, right: ParsedLog, t: ReturnType<typeof useI18n>["t"]): DiffSectionData {
   return {
-    title: "System prompt",
-    description: "归一化后的 system 指令内容。",
+    title: t("System prompt", "系统 Prompt"),
+    description: t("Normalized system instructions.", "归一化后的 system 指令内容。"),
     rows: [
       createDiffRow(
         "system",
@@ -299,15 +327,16 @@ function buildSystemSection(left: ParsedLog, right: ParsedLog): DiffSectionData 
   };
 }
 
-function buildMessagesSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
+function buildMessagesSection(left: ParsedLog, right: ParsedLog, t: ReturnType<typeof useI18n>["t"]): DiffSectionData {
   const maxLength = Math.max(left.request.messages.length, right.request.messages.length);
   const rows: DiffRowData[] = [];
 
   for (let index = 0; index < maxLength; index += 1) {
     const leftMessage = left.request.messages[index];
     const rightMessage = right.request.messages[index];
-    const leftLabel = leftMessage ? `${index + 1}. ${leftMessage.role}` : `${index + 1}. missing`;
-    const rightLabel = rightMessage ? `${index + 1}. ${rightMessage.role}` : `${index + 1}. missing`;
+    const missing = t("missing", "缺失");
+    const leftLabel = leftMessage ? `${index + 1}. ${leftMessage.role}` : `${index + 1}. ${missing}`;
+    const rightLabel = rightMessage ? `${index + 1}. ${rightMessage.role}` : `${index + 1}. ${missing}`;
     const label = leftLabel === rightLabel ? leftLabel : `${leftLabel} / ${rightLabel}`;
 
     rows.push(
@@ -320,8 +349,11 @@ function buildMessagesSection(left: ParsedLog, right: ParsedLog): DiffSectionDat
   }
 
   return {
-    title: "Messages",
-    description: "按消息顺序对比 role、content、tool call 引用。",
+    title: t("Messages", "消息"),
+    description: t(
+      "Compare role, content, and tool call references in message order.",
+      "按消息顺序对比 role、content、tool call 引用。"
+    ),
     rows,
   };
 }
@@ -346,7 +378,7 @@ function formatMessage(message: ParsedLog["request"]["messages"][number]): strin
   return parts.join("\n");
 }
 
-function buildToolsSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
+function buildToolsSection(left: ParsedLog, right: ParsedLog, t: ReturnType<typeof useI18n>["t"]): DiffSectionData {
   const names = Array.from(
     new Set([
       ...left.request.tools.map((tool) => tool.name),
@@ -355,8 +387,11 @@ function buildToolsSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
   ).sort((leftName, rightName) => leftName.localeCompare(rightName));
 
   return {
-    title: "Tools",
-    description: "按工具名称对比 description、schema 和原始定义。",
+    title: t("Tools", "工具"),
+    description: t(
+      "Compare description, schema, and raw definitions by tool name.",
+      "按工具名称对比 description、schema 和原始定义。"
+    ),
     rows: names.map((name) => {
       const leftTool = left.request.tools.find((tool) => tool.name === name);
       const rightTool = right.request.tools.find((tool) => tool.name === name);
@@ -378,7 +413,7 @@ function formatTool(tool: ParsedLog["request"]["tools"][number]): string {
   ].join("\n");
 }
 
-function buildParamsSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
+function buildParamsSection(left: ParsedLog, right: ParsedLog, t: ReturnType<typeof useI18n>["t"]): DiffSectionData {
   const leftParams = left.request.params ?? {};
   const rightParams = right.request.params ?? {};
   const keys = Array.from(
@@ -386,8 +421,11 @@ function buildParamsSection(left: ParsedLog, right: ParsedLog): DiffSectionData 
   ).sort((leftKey, rightKey) => leftKey.localeCompare(rightKey));
 
   return {
-    title: "Params",
-    description: "归一化请求参数，排除 messages、tools 等大块结构。",
+    title: t("Params", "参数"),
+    description: t(
+      "Normalized request parameters, excluding large structures such as messages and tools.",
+      "归一化请求参数，排除 messages、tools 等大块结构。"
+    ),
     rows: keys.map((key) =>
       createDiffRow(
         key,
@@ -398,16 +436,16 @@ function buildParamsSection(left: ParsedLog, right: ParsedLog): DiffSectionData 
   };
 }
 
-function buildResponseSection(left: ParsedLog, right: ParsedLog): DiffSectionData {
+function buildResponseSection(left: ParsedLog, right: ParsedLog, t: ReturnType<typeof useI18n>["t"]): DiffSectionData {
   const maxLength = Math.max(left.response.items.length, right.response.items.length);
   const rows: DiffRowData[] = [
     createDiffRow(
-      "effective body",
+      t("effective body", "有效响应体"),
       left.response.effectiveBody || "--",
       right.response.effectiveBody || "--"
     ),
     createDiffRow(
-      "has tool calls",
+      t("has tool calls", "包含工具调用"),
       display(left.response.hasToolCalls),
       display(right.response.hasToolCalls)
     ),
@@ -416,8 +454,9 @@ function buildResponseSection(left: ParsedLog, right: ParsedLog): DiffSectionDat
   for (let index = 0; index < maxLength; index += 1) {
     const leftItem = left.response.items[index];
     const rightItem = right.response.items[index];
-    const leftLabel = leftItem ? `${index + 1}. ${leftItem.kind}` : `${index + 1}. missing`;
-    const rightLabel = rightItem ? `${index + 1}. ${rightItem.kind}` : `${index + 1}. missing`;
+    const missing = t("missing", "缺失");
+    const leftLabel = leftItem ? `${index + 1}. ${leftItem.kind}` : `${index + 1}. ${missing}`;
+    const rightLabel = rightItem ? `${index + 1}. ${rightItem.kind}` : `${index + 1}. ${missing}`;
     const label = leftLabel === rightLabel ? leftLabel : `${leftLabel} / ${rightLabel}`;
 
     rows.push(
@@ -430,8 +469,11 @@ function buildResponseSection(left: ParsedLog, right: ParsedLog): DiffSectionDat
   }
 
   return {
-    title: "Response",
-    description: "对比最终响应文本、工具调用和归一化响应项。",
+    title: t("Response", "响应"),
+    description: t(
+      "Compare final response text, tool calls, and normalized response items.",
+      "对比最终响应文本、工具调用和归一化响应项。"
+    ),
     rows,
   };
 }
@@ -455,6 +497,7 @@ function LogPanel({
   log: LogEntry;
   tone: "left" | "right";
 }) {
+  const { t } = useI18n();
   const panelClassName =
     tone === "left"
       ? "min-w-0 overflow-hidden ring-1 ring-primary/15 bg-primary/5"
@@ -466,7 +509,7 @@ function LogPanel({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <Badge variant={tone === "left" ? "default" : "secondary"} className="w-fit shadow-sm">
-              {tone === "left" ? "Left" : "Right"}
+              {tone === "left" ? t("Left", "左侧") : t("Right", "右侧")}
             </Badge>
             <CardTitle>{title}</CardTitle>
             <CardDescription className="font-mono">
@@ -476,7 +519,7 @@ function LogPanel({
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">{display(log.response_status)}</Badge>
             <Badge variant={log.is_streaming ? "secondary" : "outline"}>
-              {log.is_streaming ? "Streaming" : "Non-streaming"}
+              {log.is_streaming ? t("Streaming", "流式") : t("Non-streaming", "非流式")}
             </Badge>
           </div>
         </div>
@@ -495,6 +538,7 @@ export function ComparePage({
 }: {
   onNavigate: (path: RoutePath) => void;
 }) {
+  const { locale, t } = useI18n();
   const [leftId, setLeftId] = useState("");
   const [rightId, setRightId] = useState("");
   const [pair, setPair] = useState<ComparePair | null>(null);
@@ -512,7 +556,7 @@ export function ComparePage({
   const loadPair = useCallback(async (left: number, right: number) => {
     if (left === right) {
       if (mountedRef.current) {
-        setError("Choose two different log IDs.");
+        setError(t("Choose two different log IDs.", "请选择两条不同的日志 ID。"));
         setPair(null);
       }
       return;
@@ -535,14 +579,14 @@ export function ComparePage({
       console.error("Failed to load comparison logs:", loadError);
       if (mountedRef.current) {
         setPair(null);
-        setError("Failed to load one or both logs.");
+        setError(t("Failed to load one or both logs.", "一条或两条日志加载失败。"));
       }
     } finally {
       if (mountedRef.current) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     let active = true;
@@ -571,16 +615,16 @@ export function ComparePage({
         } else if (latest.data.length === 1) {
           const [single] = latest.data;
           setLeftId(String(single.id));
-          setError("Capture at least two logs to compare.");
+          setError(t("Capture at least two logs to compare.", "至少捕获两条日志才能对比。"));
           setPair(null);
         } else {
-          setError("No logs captured yet.");
+          setError(t("No logs captured yet.", "还没有捕获日志。"));
           setPair(null);
         }
       } catch (bootstrapError) {
         console.error("Failed to bootstrap compare page:", bootstrapError);
         if (active && mountedRef.current) {
-          setError("Failed to load recent logs.");
+          setError(t("Failed to load recent logs.", "最近日志加载失败。"));
         }
       } finally {
         if (active && mountedRef.current) {
@@ -594,25 +638,25 @@ export function ComparePage({
     return () => {
       active = false;
     };
-  }, [loadPair]);
+  }, [loadPair, t]);
 
   const structuredSections = useMemo(() => {
     if (!pair) return [];
-    return buildStructuredDiff(pair[0], pair[1]);
-  }, [pair]);
+    return buildStructuredDiff(pair[0], pair[1], t, locale);
+  }, [locale, pair, t]);
 
   const handleSubmit = useCallback(async () => {
     const left = Number.parseInt(leftId, 10);
     const right = Number.parseInt(rightId, 10);
 
     if (Number.isNaN(left) || Number.isNaN(right)) {
-      setError("Enter two valid log IDs.");
+      setError(t("Enter two valid log IDs.", "请输入两个有效的日志 ID。"));
       setPair(null);
       return;
     }
 
     await loadPair(left, right);
-  }, [leftId, loadPair, rightId]);
+  }, [leftId, loadPair, rightId, t]);
 
   const diffCounts = useMemo(() => {
     const rows = structuredSections.flatMap((section) => section.rows);
@@ -631,18 +675,22 @@ export function ComparePage({
           <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex flex-col gap-1">
               <Badge variant="default" className="w-fit shadow-sm">
-                Compare
+                {t("Compare", "对比")}
               </Badge>
-              <CardTitle className="text-2xl">Prompt diff view</CardTitle>
+              <CardTitle className="text-2xl">
+                {t("Prompt diff view", "Prompt 差异视图")}
+              </CardTitle>
               <CardDescription>
-                Compare two captured requests side by side and inspect how the prompt,
-                params, and response changed.
+                {t(
+                  "Compare two captured requests side by side and inspect how the prompt, params, and response changed.",
+                  "并排对比两条已捕获请求，查看 prompt、参数和响应如何变化。"
+                )}
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => onNavigate("/logs")}>
                 <ArrowLeftIcon data-icon="inline-start" />
-                Back to logs
+                {t("Back to logs", "返回日志")}
               </Button>
               <Button
                 type="button"
@@ -659,7 +707,7 @@ export function ComparePage({
                 disabled={!pair}
               >
                 <ArrowsClockwiseIcon data-icon="inline-start" />
-                Swap
+                {t("Swap", "交换")}
               </Button>
             </div>
           </div>
@@ -674,26 +722,28 @@ export function ComparePage({
           >
             <Input
               inputMode="numeric"
-              placeholder="Left log ID"
+              placeholder={t("Left log ID", "左侧日志 ID")}
               value={leftId}
               onChange={(event) => setLeftId(event.target.value)}
               className="font-mono"
             />
             <Input
               inputMode="numeric"
-              placeholder="Right log ID"
+              placeholder={t("Right log ID", "右侧日志 ID")}
               value={rightId}
               onChange={(event) => setRightId(event.target.value)}
               className="font-mono"
             />
             <Button type="submit" variant="default" disabled={loading || bootstrapping} className="shadow-sm">
-              {loading ? "Loading..." : "Load comparison"}
+              {loading ? t("Loading...", "加载中...") : t("Load comparison", "加载对比")}
             </Button>
           </form>
 
           <p className="text-xs text-muted-foreground">
-            Select two logs from the logs page or enter IDs manually. The page also
-            loads the latest two logs by default.
+            {t(
+              "Select two logs from the logs page or enter IDs manually. The page also loads the latest two logs by default.",
+              "可以在日志页选择两条日志，也可以手动输入 ID。页面默认会加载最近两条日志。"
+            )}
           </p>
 
           {error && (
@@ -708,19 +758,26 @@ export function ComparePage({
         <>
           <section className="flex min-w-0 flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <h2 className="text-lg font-medium tracking-tight">Structured diff</h2>
+              <h2 className="text-lg font-medium tracking-tight">
+                {t("Structured diff", "结构化差异")}
+              </h2>
               <p className="text-xs text-muted-foreground">
-                按请求结构分区对比，先看变化项，再展开完整日志核对。
+                {t(
+                  "Compare by request structure. Review changed rows first, then expand full logs to verify.",
+                  "按请求结构分区对比，先看变化项，再展开完整日志核对。"
+                )}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary" className="shadow-sm">
-                  Same {diffCounts.same}
+                  {t("Same {count}", "相同 {count}", { count: diffCounts.same })}
                 </Badge>
                 <Badge variant="destructive" className="shadow-sm">
-                  Changed {diffCounts.changed}
+                  {t("Changed {count}", "变化 {count}", {
+                    count: diffCounts.changed,
+                  })}
                 </Badge>
                 <Badge variant="outline" className="shadow-sm">
-                  Total {diffCounts.total}
+                  {t("Total {count}", "总计 {count}", { count: diffCounts.total })}
                 </Badge>
               </div>
             </div>
@@ -735,18 +792,21 @@ export function ComparePage({
           <Separator />
 
           <div className="grid min-w-0 gap-4 2xl:grid-cols-2">
-            <LogPanel title="Left log" log={pair[0]} tone="left" />
-            <LogPanel title="Right log" log={pair[1]} tone="right" />
+            <LogPanel title={t("Left log", "左侧日志")} log={pair[0]} tone="left" />
+            <LogPanel title={t("Right log", "右侧日志")} log={pair[1]} tone="right" />
           </div>
         </>
       ) : !loading ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center gap-2 py-16 text-center">
             <p className="text-sm text-muted-foreground">
-              No comparison loaded yet.
+              {t("No comparison loaded yet.", "还没有加载对比。")}
             </p>
             <p className="text-xs text-muted-foreground">
-              Use the form above or compare two selected logs from the logs page.
+              {t(
+                "Use the form above or compare two selected logs from the logs page.",
+                "使用上面的表单，或从日志页选择两条日志进行对比。"
+              )}
             </p>
           </CardContent>
         </Card>

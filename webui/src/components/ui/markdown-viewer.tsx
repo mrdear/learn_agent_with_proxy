@@ -3,6 +3,7 @@ import remarkGfm from "remark-gfm";
 import { useMemo, useState } from "react";
 import { Copy, Check } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface MarkdownViewerProps {
@@ -121,6 +122,7 @@ function protectCustomXmlBlocks(content: string): string {
 }
 
 export function MarkdownViewer({ content, className }: MarkdownViewerProps) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const renderContent = useMemo(() => protectCustomXmlBlocks(content), [content]);
 
@@ -145,7 +147,7 @@ export function MarkdownViewer({ content, className }: MarkdownViewerProps) {
           onClick={handleCopy}
         >
           {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("Copied", "已复制") : t("Copy", "复制")}
         </Button>
       </div>
       <div className="prose prose-sm dark:prose-invert max-w-none break-words">

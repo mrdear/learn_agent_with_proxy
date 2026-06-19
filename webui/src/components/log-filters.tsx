@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { useI18n } from "@/lib/i18n";
 import { ArrowsClockwise } from "@phosphor-icons/react";
 
 interface LogFiltersProps {
@@ -36,6 +37,7 @@ export function LogFilters({
   onGroupGapMinutesChange,
   onRefresh,
 }: LogFiltersProps) {
+  const { t } = useI18n();
   const handleGroupGapChange = (value: number | readonly number[]) => {
     onGroupGapMinutesChange(Array.isArray(value) ? (value[0] ?? 1) : value);
   };
@@ -47,10 +49,10 @@ export function LogFilters({
         onValueChange={(v) => onProviderChange(v === "all" ? "" : (v ?? ""))}
       >
         <SelectTrigger className="w-full">
-          <SelectValue placeholder="All Providers" />
+          <SelectValue placeholder={t("All providers", "全部 Provider")} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All Providers</SelectItem>
+          <SelectItem value="all">{t("All providers", "全部 Provider")}</SelectItem>
           <SelectItem value="openai">OpenAI</SelectItem>
           <SelectItem value="anthropic">Anthropic</SelectItem>
         </SelectContent>
@@ -61,10 +63,10 @@ export function LogFilters({
         onValueChange={(v) => onModelChange(v === "all" ? "" : (v ?? ""))}
       >
         <SelectTrigger className="w-full">
-          <SelectValue placeholder="All Models" />
+          <SelectValue placeholder={t("All models", "全部模型")} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All Models</SelectItem>
+          <SelectItem value="all">{t("All models", "全部模型")}</SelectItem>
           {models.map((m) => (
             <SelectItem key={m} value={m}>
               {m}
@@ -74,7 +76,7 @@ export function LogFilters({
       </Select>
 
       <Input
-        placeholder="Search prompts, models..."
+        placeholder={t("Search prompts, models...", "搜索 prompt、模型...")}
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         className="w-full"
@@ -82,7 +84,7 @@ export function LogFilters({
 
       <div className="flex h-8 min-w-0 items-center gap-2 rounded-none border border-input bg-transparent px-2.5 dark:bg-input/30">
         <Label htmlFor="log-group-gap" className="shrink-0 text-xs text-muted-foreground">
-          Gap
+          {t("Gap", "间隔")}
         </Label>
         <Slider
           id="log-group-gap"
@@ -91,7 +93,7 @@ export function LogFilters({
           max={30}
           step={1}
           className="min-w-16 flex-1"
-          aria-label="Group gap in minutes"
+          aria-label={t("Group gap in minutes", "按分钟设置分组间隔")}
           onValueChange={handleGroupGapChange}
         />
         <span className="w-8 shrink-0 text-right font-mono text-xs text-muted-foreground">
@@ -99,7 +101,13 @@ export function LogFilters({
         </span>
       </div>
 
-      <Button variant="default" size="icon" className="shadow-sm" onClick={onRefresh} title="Refresh">
+      <Button
+        variant="default"
+        size="icon"
+        className="shadow-sm"
+        onClick={onRefresh}
+        title={t("Refresh", "刷新")}
+      >
         <ArrowsClockwise data-icon="inline-start" />
       </Button>
     </div>

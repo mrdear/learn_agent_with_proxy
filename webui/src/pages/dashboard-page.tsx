@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type LogListEntry, fetchLogs, fetchProviderConfigs, type ProviderConfig } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import type { RoutePath } from "@/lib/routes";
 import {
   ArrowRightIcon,
@@ -69,9 +70,11 @@ const BACKEND_ENV_SNIPPET = `PORT=3000
 DATABASE_URL=./proxy.db
 PROXY_CONFIG_SECRET=use-a-long-random-local-secret`;
 
-function CopyButton({ text, label = "复制" }: { text: string; label?: string }) {
+function CopyButton({ text, label }: { text: string; label?: string }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<number | null>(null);
+  const buttonLabel = label ?? t("Copy", "复制");
 
   useEffect(() => {
     return () => {
@@ -106,7 +109,7 @@ function CopyButton({ text, label = "复制" }: { text: string; label?: string }
       ) : (
         <CopySimpleIcon data-icon="inline-start" />
       )}
-      {copied ? "已复制" : label}
+      {copied ? t("Copied", "已复制") : buttonLabel}
     </Button>
   );
 }
@@ -117,17 +120,10 @@ function formatDuration(ms: number | null): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function StatusBadge({ status }: { status: number | null }) {
-  if (status === null) return <Badge variant="outline">pending</Badge>;
+  const { t } = useI18n();
+
+  if (status === null) return <Badge variant="outline">{t("pending", "等待中")}</Badge>;
   if (status >= 200 && status < 300) return <Badge variant="default">{status}</Badge>;
   return <Badge variant="destructive">{status}</Badge>;
 }
@@ -163,17 +159,20 @@ function EndpointRow({
   value: string;
   copyable?: boolean;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="grid min-w-0 gap-2 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0 sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-center">
       <span className="text-xs text-muted-foreground">{label}</span>
       <code className="truncate font-mono text-xs text-foreground">{value}</code>
-      {copyable ? <CopyButton text={value} label="复制" /> : <span />}
+      {copyable ? <CopyButton text={value} label={t("Copy", "复制")} /> : <span />}
     </div>
   );
 }
 
 function RecentLogRow({ log }: { log: LogListEntry }) {
-  const summary = log.request_preview || log.endpoint || "No prompt summary";
+  const { formatDate, t } = useI18n();
+  const summary = log.request_preview || log.endpoint || t("No prompt summary", "没有 prompt 摘要");
   const trimmed = summary.length > 120 ? `${summary.slice(0, 120)}...` : summary;
 
   return (
@@ -186,12 +185,18 @@ function RecentLogRow({ log }: { log: LogListEntry }) {
         <Badge variant="secondary" className="max-w-full truncate">
           {log.provider}
         </Badge>
-        {log.is_streaming ? <Badge variant="outline">stream</Badge> : null}
+        {log.is_streaming ? <Badge variant="outline">{t("stream", "流式")}</Badge> : null}
       </div>
       <div className="min-w-0">
         <p className="truncate text-sm">{trimmed}</p>
         <p className="truncate font-mono text-xs text-muted-foreground">
-          {log.model || "--"} · {formatTime(log.request_time)}
+          {log.model || "--"} ·{" "}
+          {formatDate(log.request_time, {
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </p>
       </div>
       <p className="font-mono text-xs text-muted-foreground md:text-right">
@@ -202,10 +207,12 @@ function RecentLogRow({ log }: { log: LogListEntry }) {
 }
 
 function ProviderConfigStatus({ configs }: { configs: ProviderConfig[] }) {
+  const { t } = useI18n();
+
   if (configs.length === 0) {
     return (
       <div className="border border-dashed border-border/80 p-4 text-sm text-muted-foreground">
-        Settings 里还没有 provider 配置。
+        {t("No provider configs in Settings yet.", "Settings 里还没有 provider 配置。")}
       </div>
     );
   }
@@ -225,14 +232,16 @@ function ProviderConfigStatus({ configs }: { configs: ProviderConfig[] }) {
           </code>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Badge variant={config.api_key_configured ? "default" : "outline"}>
-              {config.api_key_configured ? "upstream key" : "no upstream key"}
+              {config.api_key_configured
+                ? t("upstream key", "上游 key")
+                : t("no upstream key", "无上游 key")}
             </Badge>
             {config.access_key ? (
-              <CopyButton text={config.access_key} label="复制 AK" />
+              <CopyButton text={config.access_key} label={t("Copy AK", "复制 AK")} />
             ) : (
-              <Badge variant="outline">no access key</Badge>
+              <Badge variant="outline">{t("no access key", "无访问 key")}</Badge>
             )}
-            {!config.enabled && <Badge variant="destructive">disabled</Badge>}
+            {!config.enabled && <Badge variant="destructive">{t("disabled", "已禁用")}</Badge>}
           </div>
         </div>
       ))}
@@ -251,6 +260,8 @@ function SnippetCard({
   code: string;
   config?: ProviderConfig;
 }) {
+  const { t } = useI18n();
+
   return (
     <Card className="min-w-0 bg-card/80">
       <CardHeader>
@@ -261,10 +272,12 @@ function SnippetCard({
             {config ? (
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <Badge variant={config.enabled ? "secondary" : "outline"}>
-                  {config.enabled ? "enabled" : "disabled"}
+                  {config.enabled ? t("enabled", "已启用") : t("disabled", "已禁用")}
                 </Badge>
                 <Badge variant={config.access_key_configured ? "default" : "outline"}>
-                  {config.access_key_configured ? "access key" : "no access key"}
+                  {config.access_key_configured
+                    ? t("access key", "访问 key")
+                    : t("no access key", "无访问 key")}
                 </Badge>
                 <code className="max-w-full truncate font-mono text-[11px] text-muted-foreground">
                   {config.base_url}
@@ -272,7 +285,9 @@ function SnippetCard({
               </div>
             ) : (
               <div className="pt-1">
-                <Badge variant="destructive">Configure in Settings</Badge>
+                <Badge variant="destructive">
+                  {t("Configure in Settings", "去 Settings 配置")}
+                </Badge>
               </div>
             )}
           </div>
@@ -289,6 +304,7 @@ function SnippetCard({
 }
 
 function ProviderTabs({ configs }: { configs: ProviderConfig[] }) {
+  const { t } = useI18n();
   const openAIConfig = configs.find((config) => config.provider === "openai");
   const responsesConfig = configs.find((config) => config.provider === "openai-responses");
   const anthropicConfig = configs.find((config) => config.provider === "anthropic");
@@ -305,7 +321,10 @@ function ProviderTabs({ configs }: { configs: ProviderConfig[] }) {
       <TabsContent value="openai" className="mt-4">
         <SnippetCard
           title="OpenAI SDK"
-          description="把 baseURL 指向本地代理的 /v1 路径。"
+          description={t(
+            "Point baseURL to the local proxy /v1 path.",
+            "把 baseURL 指向本地代理的 /v1 路径。"
+          )}
           code={openAISnippet(openAIConfig)}
           config={openAIConfig}
         />
@@ -314,7 +333,10 @@ function ProviderTabs({ configs }: { configs: ProviderConfig[] }) {
       <TabsContent value="responses" className="mt-4">
         <SnippetCard
           title="Responses API"
-          description="适合需要直接验证 /responses 路径的集成。"
+          description={t(
+            "Use this when you need to verify the /responses path directly.",
+            "适合需要直接验证 /responses 路径的集成。"
+          )}
           code={openAIResponsesSnippet(responsesConfig)}
           config={responsesConfig}
         />
@@ -323,7 +345,10 @@ function ProviderTabs({ configs }: { configs: ProviderConfig[] }) {
       <TabsContent value="anthropic" className="mt-4">
         <SnippetCard
           title="Anthropic SDK"
-          description="请求会由代理转换到兼容的上游格式。"
+          description={t(
+            "The proxy converts requests to the compatible upstream format.",
+            "请求会由代理转换到兼容的上游格式。"
+          )}
           code={anthropicSnippet(anthropicConfig)}
           config={anthropicConfig}
         />
@@ -332,7 +357,10 @@ function ProviderTabs({ configs }: { configs: ProviderConfig[] }) {
       <TabsContent value="curl" className="mt-4">
         <SnippetCard
           title="cURL"
-          description="不接 SDK 时，用命令行快速打一条请求。"
+          description={t(
+            "Send a quick request from the command line without an SDK.",
+            "不接 SDK 时，用命令行快速打一条请求。"
+          )}
           code={curlSnippet(openAIConfig)}
           config={openAIConfig}
         />
@@ -346,6 +374,7 @@ export function DashboardPage({
 }: {
   onNavigate: (path: RoutePath) => void;
 }) {
+  const { t } = useI18n();
   const [logs, setLogs] = useState<LogListEntry[]>([]);
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfig[]>([]);
   const [total, setTotal] = useState(0);
@@ -396,23 +425,28 @@ export function DashboardPage({
       <section className="grid min-w-0 gap-5 xl:grid-cols-[1.3fr_0.7fr]">
         <Card className="min-w-0 bg-card/90">
           <CardHeader className="border-b border-border/70">
-            <CardDescription>Local proxy workspace</CardDescription>
+            <CardDescription>
+              {t("Local proxy workspace", "本地代理工作台")}
+            </CardDescription>
             <CardTitle className="max-w-3xl text-3xl tracking-tight">
-              捕获、查看和对比 AI 请求
+              {t("Capture, inspect, and compare AI requests", "捕获、查看和对比 AI 请求")}
             </CardTitle>
             <CardAction>
               <Badge variant={loadFailed ? "destructive" : "secondary"}>
-                {loadFailed ? "API offline" : "Ready"}
+                {loadFailed ? t("API offline", "API 离线") : t("Ready", "就绪")}
               </Badge>
             </CardAction>
           </CardHeader>
           <CardContent className="flex flex-col gap-5 pt-1">
             <p className="max-w-2xl text-sm text-muted-foreground">
-              常用入口集中在这里：看最近流量、复制代理地址、跳到日志详情或响应对比。
+              {t(
+                "Common entry points live here: review recent traffic, copy proxy URLs, open log details, or compare responses.",
+                "常用入口集中在这里：看最近流量、复制代理地址、跳到日志详情或响应对比。"
+              )}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" onClick={() => onNavigate("/logs")}>
-                查看日志
+                {t("View logs", "查看日志")}
                 <ArrowRightIcon data-icon="inline-end" />
               </Button>
               <Button
@@ -420,24 +454,29 @@ export function DashboardPage({
                 variant="outline"
                 onClick={() => onNavigate("/compare")}
               >
-                响应对比
+                {t("Compare responses", "响应对比")}
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => onNavigate("/settings")}
               >
-                Provider 配置
+                {t("Provider settings", "Provider 配置")}
               </Button>
-              <CopyButton text={API_BASE_URL} label="复制 baseURL" />
+              <CopyButton text={API_BASE_URL} label={t("Copy baseURL", "复制 baseURL")} />
             </div>
           </CardContent>
         </Card>
 
         <Card className="min-w-0 bg-card/90">
           <CardHeader>
-            <CardTitle>代理连接</CardTitle>
-            <CardDescription>客户端 SDK 只需要改这个入口。</CardDescription>
+            <CardTitle>{t("Proxy connection", "代理连接")}</CardTitle>
+            <CardDescription>
+              {t(
+                "Client SDKs only need this entry point changed.",
+                "客户端 SDK 只需要改这个入口。"
+              )}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <EndpointRow label="Base URL" value={API_BASE_URL} copyable />
@@ -451,39 +490,42 @@ export function DashboardPage({
 
       <section className="grid min-w-0 gap-3 md:grid-cols-3">
         <MetricCard
-          label="日志总量"
+          label={t("Total logs", "日志总量")}
           value={loading ? "--" : String(total)}
-          detail="来自当前代理数据库"
+          detail={t("From the current proxy database", "来自当前代理数据库")}
         />
         <MetricCard
-          label="最近错误"
+          label={t("Recent errors", "最近错误")}
           value={loading ? "--" : String(recentErrors)}
-          detail="按首页最近 6 条估算"
+          detail={t("Estimated from the latest 6 dashboard rows", "按首页最近 6 条估算")}
         />
         <MetricCard
-          label="平均耗时"
+          label={t("Average duration", "平均耗时")}
           value={formatDuration(averageDuration)}
-          detail="按首页最近完成请求计算"
+          detail={t("Computed from recent completed requests", "按首页最近完成请求计算")}
         />
       </section>
 
       <section className="grid min-w-0 gap-5 2xl:grid-cols-[1.05fr_0.95fr]">
         <Card className="min-w-0 bg-card/90">
           <CardHeader>
-            <CardTitle>最近请求</CardTitle>
+            <CardTitle>{t("Recent requests", "最近请求")}</CardTitle>
             <CardDescription>
-              用来快速确认代理有没有收到流量，完整筛选放在日志页。
+              {t(
+                "Quickly confirm whether the proxy is receiving traffic. Full filtering lives on the logs page.",
+                "用来快速确认代理有没有收到流量，完整筛选放在日志页。"
+              )}
             </CardDescription>
             <CardAction>
               <Button type="button" variant="outline" size="sm" onClick={loadOverview}>
-                刷新
+                {t("Refresh", "刷新")}
               </Button>
             </CardAction>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="flex flex-col gap-3 text-sm text-muted-foreground">
-                正在读取最近日志...
+                {t("Loading recent logs...", "正在读取最近日志...")}
               </div>
             ) : logs.length > 0 ? (
               <div className="flex flex-col">
@@ -493,7 +535,10 @@ export function DashboardPage({
               </div>
             ) : (
               <div className="border border-dashed border-border/80 p-6 text-sm text-muted-foreground">
-                还没有请求。复制 baseURL 接入客户端后，这里会出现最新流量。
+                {t(
+                  "No requests yet. Copy the baseURL into a client and recent traffic will appear here.",
+                  "还没有请求。复制 baseURL 接入客户端后，这里会出现最新流量。"
+                )}
               </div>
             )}
           </CardContent>
@@ -502,8 +547,10 @@ export function DashboardPage({
         <div className="flex min-w-0 flex-col gap-5">
           <Card className="min-w-0 bg-card/90">
             <CardHeader>
-              <CardTitle>Provider 配置</CardTitle>
-              <CardDescription>当前上游 endpoint 和 key 状态。</CardDescription>
+              <CardTitle>{t("Provider settings", "Provider 配置")}</CardTitle>
+              <CardDescription>
+                {t("Current upstream endpoint and key status.", "当前上游 endpoint 和 key 状态。")}
+              </CardDescription>
               <CardAction>
                 <Button type="button" variant="outline" size="sm" onClick={() => onNavigate("/settings")}>
                   Settings
@@ -517,8 +564,13 @@ export function DashboardPage({
 
           <Card className="min-w-0 bg-card/90">
             <CardHeader>
-              <CardTitle>后端环境变量</CardTitle>
-              <CardDescription>只保留启动代理需要看的字段。</CardDescription>
+              <CardTitle>{t("Backend environment", "后端环境变量")}</CardTitle>
+              <CardDescription>
+                {t(
+                  "Only the fields needed to start the proxy are shown.",
+                  "只保留启动代理需要看的字段。"
+                )}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <pre className="overflow-auto border border-border/70 bg-muted/30 p-4 font-mono text-[11px] leading-relaxed">
@@ -529,8 +581,13 @@ export function DashboardPage({
 
           <Card className="min-w-0 bg-card/90">
             <CardHeader>
-              <CardTitle>常见确认项</CardTitle>
-              <CardDescription>请求发出去后，优先看这些字段。</CardDescription>
+              <CardTitle>{t("Common checks", "常见确认项")}</CardTitle>
+              <CardDescription>
+                {t(
+                  "After a request is sent, check these fields first.",
+                  "请求发出去后，优先看这些字段。"
+                )}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col">
@@ -541,7 +598,7 @@ export function DashboardPage({
                       className="flex items-center justify-between gap-3 border-t border-border/70 py-3 first:border-t-0 first:pt-0 last:pb-0"
                     >
                       <code className="font-mono text-xs">{field}</code>
-                      <Badge variant="outline">Log detail</Badge>
+                      <Badge variant="outline">{t("Log detail", "日志详情")}</Badge>
                     </div>
                   )
                 )}
@@ -554,9 +611,12 @@ export function DashboardPage({
       <section>
         <Card className="min-w-0 bg-card/90">
           <CardHeader>
-            <CardTitle>接入示例</CardTitle>
+            <CardTitle>{t("Integration examples", "接入示例")}</CardTitle>
             <CardDescription>
-              需要换 SDK 或命令行验证时再展开对应标签。
+              {t(
+                "Open the matching tab when switching SDKs or validating from the command line.",
+                "需要换 SDK 或命令行验证时再展开对应标签。"
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>

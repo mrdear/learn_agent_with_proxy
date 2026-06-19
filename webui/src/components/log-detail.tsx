@@ -20,6 +20,7 @@ import {
   type ParsedResponseItem,
   type ParsedTool,
 } from "@/lib/log-parsing";
+import { useI18n } from "@/lib/i18n";
 
 interface LogDetailProps {
   log: LogEntry;
@@ -125,6 +126,7 @@ function ToolResultContent({
   contentText: string;
   parsedJson: unknown | null;
 }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const text = useMemo(
     () => formatToolResultText(contentText, parsedJson),
@@ -137,7 +139,7 @@ function ToolResultContent({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error("Copy failed");
+      toast.error(t("Copy failed", "复制失败"));
     }
   };
 
@@ -152,7 +154,7 @@ function ToolResultContent({
           onClick={handleCopy}
         >
           {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("Copied", "已复制") : t("Copy", "复制")}
         </Button>
       </div>
       <pre className="max-h-[500px] overflow-auto rounded-md border border-border bg-muted/30 p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-words">
@@ -171,8 +173,24 @@ const roleMeta: Record<string, { bg: string; label: string }> = {
   function_call: { bg: "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200", label: "Tool Call" },
 };
 
+function translateRoleLabel(
+  role: string,
+  fallback: string,
+  t: ReturnType<typeof useI18n>["t"]
+): string {
+  if (role === "system") return t("System", "系统");
+  if (role === "developer") return t("Developer", "开发者");
+  if (role === "user") return t("User", "用户");
+  if (role === "assistant") return t("Assistant", "助手");
+  if (role === "tool") return t("Tool Result", "工具结果");
+  if (role === "function_call") return t("Tool Call", "工具调用");
+  return fallback;
+}
+
 function MessageItem({ msg, index }: { msg: ParsedMessage; index: number }) {
+  const { t } = useI18n();
   const meta = roleMeta[msg.role] || { bg: "", label: msg.role };
+  const roleLabel = translateRoleLabel(msg.role, meta.label, t);
   const contentText = useMemo(() => stringifyContent(msg.content), [msg.content]);
   const parsedJson = useMemo(() => tryParseJsonContent(contentText), [contentText]);
   const isJsonContent = parsedJson !== null;
@@ -183,7 +201,7 @@ function MessageItem({ msg, index }: { msg: ParsedMessage; index: number }) {
     <div className="rounded-md border border-border overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border">
         <Badge variant="outline" className={meta.bg}>
-          {meta.label}
+          {roleLabel}
         </Badge>
         <span className="text-[10px] text-muted-foreground font-mono">#{index}</span>
         {(msg.role === "tool" || msg.role === "function_call") && msg.name && (
@@ -205,7 +223,9 @@ function MessageItem({ msg, index }: { msg: ParsedMessage; index: number }) {
       )}
       {!!hasToolCalls && (
         <div className="border-t border-border p-3">
-          <p className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wider font-semibold">Tool Calls</p>
+          <p className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wider font-semibold">
+            {t("Tool Calls", "工具调用")}
+          </p>
           <JsonViewer data={msg.tool_calls as object} />
         </div>
       )}
@@ -253,6 +273,7 @@ function ToolCard({ tool, highlight }: { tool: ParsedTool; highlight: string }) 
 }
 
 function ToolsPanel({ tools }: { tools: ParsedTool[] }) {
+  const { t } = useI18n();
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
@@ -271,14 +292,20 @@ function ToolsPanel({ tools }: { tools: ParsedTool[] }) {
       <div className="relative">
         <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
         <Input
-          placeholder="Search tools by name, description, schema..."
+          placeholder={t(
+            "Search tools by name, description, schema...",
+            "按名称、描述、schema 搜索工具..."
+          )}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-8 h-8 text-xs"
         />
       </div>
       <div className="text-xs text-muted-foreground">
-        {filtered.length} / {tools.length} tools
+        {t("{shown} / {total} tools", "{shown} / {total} 个工具", {
+          shown: filtered.length,
+          total: tools.length,
+        })}
       </div>
       <div className="space-y-2">
         {filtered.map((tool, i) => (
@@ -286,7 +313,9 @@ function ToolsPanel({ tools }: { tools: ParsedTool[] }) {
         ))}
         {filtered.length === 0 && (
           <p className="text-sm text-muted-foreground py-4 text-center">
-            No tools match "{search}"
+            {t('No tools match "{search}"', '没有工具匹配 "{search}"', {
+              search,
+            })}
           </p>
         )}
       </div>
@@ -301,25 +330,29 @@ function ParamsPanel({
   headers: ParsedJsonBlock | null;
   request: Record<string, unknown> | null;
 }) {
+  const { t } = useI18n();
+
   if (!headers && !request) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
-        No parameters
+        {t("No parameters", "没有参数")}
       </p>
     );
   }
 
   return (
     <div className="space-y-4">
-      <JsonBlock label="Headers" block={headers} />
+      <JsonBlock label={t("Headers", "请求头")} block={headers} />
       {request ? (
         <div className="space-y-1.5">
-          <p className="text-sm font-medium text-muted-foreground">Request</p>
+          <p className="text-sm font-medium text-muted-foreground">
+            {t("Request", "请求")}
+          </p>
           <JsonViewer data={request} />
         </div>
       ) : (
         <p className="py-4 text-center text-sm text-muted-foreground">
-          No request parameters
+          {t("No request parameters", "没有请求参数")}
         </p>
       )}
     </div>
@@ -327,8 +360,10 @@ function ParamsPanel({
 }
 
 function ResponseItem({ item, index }: { item: ParsedResponseItem; index: number }) {
+  const { t } = useI18n();
   const role = item.role || (item.kind === "tool_call" ? "function_call" : "assistant");
   const meta = roleMeta[role] || { bg: roleMeta.system.bg, label: role };
+  const roleLabel = translateRoleLabel(role, meta.label, t);
   const contentText = useMemo(() => stringifyContent(item.content), [item.content]);
   const parsedJson = useMemo(() => tryParseJsonContent(contentText), [contentText]);
   const isJsonContent = parsedJson !== null;
@@ -337,9 +372,11 @@ function ResponseItem({ item, index }: { item: ParsedResponseItem; index: number
     <div className="rounded-md border border-border overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border">
         <Badge variant="outline" className={meta.bg}>
-          {item.kind === "tool_call" ? "Tool Call" : meta.label}
+          {item.kind === "tool_call" ? t("Tool Call", "工具调用") : roleLabel}
         </Badge>
-        <span className="text-[10px] text-muted-foreground font-mono">output #{index}</span>
+        <span className="text-[10px] text-muted-foreground font-mono">
+          {t("output #{index}", "输出 #{index}", { index })}
+        </span>
         {item.name && (
           <span className="text-[10px] text-muted-foreground font-mono">fn: {item.name}</span>
         )}
@@ -401,12 +438,13 @@ function extractToolPayload(item: ParsedResponseItem): {
 }
 
 function ToolCallResponseItem({ item, index }: { item: ParsedResponseItem; index: number }) {
+  const { t } = useI18n();
   const payload = useMemo(() => extractToolPayload(item), [item]);
 
   return (
     <div className="overflow-hidden rounded-none border border-border">
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-2">
-        <Badge variant="secondary">Tool call</Badge>
+        <Badge variant="secondary">{t("Tool call", "工具调用")}</Badge>
         <span className="font-mono text-xs font-medium">{payload.name}</span>
         <span className="font-mono text-[10px] text-muted-foreground">#{index}</span>
         {payload.callId && (
@@ -417,7 +455,9 @@ function ToolCallResponseItem({ item, index }: { item: ParsedResponseItem; index
       </div>
       <div className="flex flex-col gap-3 p-3">
         <div className="flex flex-col gap-1.5">
-          <p className="text-xs font-medium text-muted-foreground">Arguments</p>
+          <p className="text-xs font-medium text-muted-foreground">
+            {t("Arguments", "参数")}
+          </p>
           {isRecord(payload.argumentsData) || Array.isArray(payload.argumentsData) ? (
             <JsonViewer data={payload.argumentsData} />
           ) : (
@@ -429,7 +469,7 @@ function ToolCallResponseItem({ item, index }: { item: ParsedResponseItem; index
         <details className="group overflow-hidden rounded-none border border-border">
           <summary className="flex cursor-pointer list-none items-center gap-2 bg-muted/30 px-3 py-2 text-xs text-muted-foreground outline-none hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
             <CaretRight className="transition-transform group-open:rotate-90" />
-            Raw tool payload
+            {t("Raw tool payload", "原始工具载荷")}
           </summary>
           <div className="border-t border-border p-3">
             {isRecord(payload.raw) || Array.isArray(payload.raw) ? (
@@ -455,17 +495,20 @@ function ReadableResponseItem({ item, index }: { item: ParsedResponseItem; index
 }
 
 function ProtocolBadge({ protocol }: { protocol: LogProtocol }) {
+  const { t } = useI18n();
   const label: Record<LogProtocol, string> = {
     "openai-chat": "OpenAI Chat",
     "openai-responses": "Responses",
     anthropic: "Anthropic",
-    unknown: "Unknown",
+    unknown: t("Unknown", "未知"),
   };
 
   return <Badge variant="outline">{label[protocol]}</Badge>;
 }
 
 function RawResponseBlock({ block }: { block: ParsedJsonBlock | null }) {
+  const { t } = useI18n();
+
   if (!block) {
     return null;
   }
@@ -473,7 +516,9 @@ function RawResponseBlock({ block }: { block: ParsedJsonBlock | null }) {
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-muted-foreground">Raw JSON</p>
+        <p className="text-xs font-medium text-muted-foreground">
+          {t("Raw JSON", "原始 JSON")}
+        </p>
       </div>
       {block.parsed !== null && typeof block.parsed === "object" ? (
         <JsonViewer data={block.parsed} />
@@ -499,6 +544,7 @@ function ResponsePanel({
   protocol: LogProtocol;
   hasToolCalls: boolean;
 }) {
+  const { t } = useI18n();
   const readableText = effectiveBody;
   const rawIsParsedJson = rawBlock?.parsed !== null && typeof rawBlock?.parsed === "object";
   const shouldShowReadableText = Boolean(readableText && !rawIsParsedJson);
@@ -508,7 +554,7 @@ function ResponsePanel({
   if (!shouldShowReadableText && items.length === 0 && !rawBlock) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
-        No response body
+        {t("No response body", "没有响应体")}
       </p>
     );
   }
@@ -518,11 +564,15 @@ function ResponsePanel({
       <section className="overflow-hidden rounded-none border border-border">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">Readable</Badge>
+            <Badge variant="secondary">{t("Readable", "可读视图")}</Badge>
             <ProtocolBadge protocol={protocol} />
-            <Badge variant="outline">{messageCount} messages</Badge>
+            <Badge variant="outline">
+              {t("{count} messages", "{count} 条消息", { count: messageCount })}
+            </Badge>
             <Badge variant={hasToolCalls ? "secondary" : "outline"}>
-              {toolCallCount} tool calls
+              {t("{count} tool calls", "{count} 次工具调用", {
+                count: toolCallCount,
+              })}
             </Badge>
           </div>
         </div>
@@ -537,7 +587,7 @@ function ResponsePanel({
             </div>
           ) : (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              No readable response extracted
+              {t("No readable response extracted", "没有提取到可读响应")}
             </p>
           )}
         </div>
@@ -546,7 +596,7 @@ function ResponsePanel({
       <section className="overflow-hidden rounded-none border border-border">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">Raw</Badge>
+            <Badge variant="outline">{t("Raw", "原始数据")}</Badge>
           </div>
         </div>
         <div className="p-3">
@@ -564,6 +614,7 @@ export function LogDetail({
   showActions = true,
   onReplayComplete,
 }: LogDetailProps) {
+  const { formatDate, t } = useI18n();
   const detail = useMemo(() => buildLogDetailData(log), [log]);
   const { parsed, rawBlocks, responseRawBlock } = detail;
   const requestMessages = parsed.request.messages.filter(
@@ -589,19 +640,25 @@ export function LogDetail({
       const replayed = await replayLog(log.id, overrides);
       toast.success(
         overrides
-          ? `Relayed as #${replayed.id}`
-          : `Replayed as #${replayed.id}`
+          ? t("Relayed as #{id}", "已转发为 #{id}", { id: replayed.id })
+          : t("Replayed as #{id}", "已重放为 #{id}", { id: replayed.id })
       );
       onReplayComplete?.(replayed);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(mode === "relay" ? `Relay failed: ${message}` : `Replay failed: ${message}`);
+      toast.error(
+        mode === "relay"
+          ? t("Relay failed: {message}", "转发失败：{message}", { message })
+          : t("Replay failed: {message}", "重放失败：{message}", { message })
+      );
     } finally {
       setReplaying(false);
     }
   };
 
-  const sourceLabel = log.source_log_id ? `#${log.source_log_id}` : "Original";
+  const sourceLabel = log.source_log_id
+    ? `#${log.source_log_id}`
+    : t("Original", "原始请求");
 
   return (
     <div className="space-y-5 p-4">
@@ -615,39 +672,45 @@ export function LogDetail({
           </div>
         </div>
         <div>
-          <span className="text-xs text-muted-foreground">Model</span>
+          <span className="text-xs text-muted-foreground">{t("Model", "模型")}</span>
           <div className="font-mono text-xs">{log.model || "--"}</div>
         </div>
         <div>
-          <span className="text-xs text-muted-foreground">Status</span>
+          <span className="text-xs text-muted-foreground">{t("Status", "状态")}</span>
           <div className="font-mono text-xs">{log.response_status ?? "--"}</div>
         </div>
         <div>
-          <span className="text-xs text-muted-foreground">Streaming</span>
-          <div className="text-xs">{log.is_streaming ? "Yes (SSE)" : "No"}</div>
+          <span className="text-xs text-muted-foreground">{t("Streaming", "流式")}</span>
+          <div className="text-xs">
+            {log.is_streaming ? t("Yes (SSE)", "是 (SSE)") : t("No", "否")}
+          </div>
         </div>
         <div>
-          <span className="text-xs text-muted-foreground">Input Tokens</span>
+          <span className="text-xs text-muted-foreground">
+            {t("Input tokens", "输入 tokens")}
+          </span>
           <div className="font-mono text-xs">{log.input_tokens ?? "--"}</div>
         </div>
         <div>
-          <span className="text-xs text-muted-foreground">Output Tokens</span>
+          <span className="text-xs text-muted-foreground">
+            {t("Output tokens", "输出 tokens")}
+          </span>
           <div className="font-mono text-xs">{log.output_tokens ?? "--"}</div>
         </div>
         <div>
-          <span className="text-xs text-muted-foreground">Duration</span>
+          <span className="text-xs text-muted-foreground">{t("Duration", "耗时")}</span>
           <div className="font-mono text-xs">
             {log.duration_ms != null ? `${log.duration_ms}ms` : "--"}
           </div>
         </div>
         <div>
-          <span className="text-xs text-muted-foreground">Time</span>
+          <span className="text-xs text-muted-foreground">{t("Time", "时间")}</span>
           <div className="text-xs">
-            {new Date(log.request_time).toLocaleString("zh-CN")}
+            {formatDate(log.request_time)}
           </div>
         </div>
         <div>
-          <span className="text-xs text-muted-foreground">Origin</span>
+          <span className="text-xs text-muted-foreground">{t("Origin", "来源")}</span>
           <div>
             <Badge variant={log.source_log_id ? "secondary" : "outline"}>
               {sourceLabel}
@@ -655,7 +718,9 @@ export function LogDetail({
           </div>
         </div>
         <div className="col-span-2 lg:col-span-4">
-          <span className="text-xs text-muted-foreground">Upstream URL</span>
+          <span className="text-xs text-muted-foreground">
+            {t("Upstream URL", "上游 URL")}
+          </span>
           <div className="break-all font-mono text-xs">
             {log.upstream_url || "--"}
           </div>
@@ -672,11 +737,13 @@ export function LogDetail({
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-primary/15 bg-primary/5 px-3 py-2">
           <div className="flex flex-col gap-1">
             <Badge variant="default" className="w-fit shadow-sm">
-              Replay tools
+              {t("Replay tools", "重放工具")}
             </Badge>
             <p className="text-xs text-muted-foreground">
-              Replay sends the captured request again. Relay opens the editor tab so you
-              can tweak the path, method, or body before resending.
+              {t(
+                "Replay sends the captured request again. Relay opens the editor tab so you can tweak the path, method, or body before resending.",
+                "Replay 会重新发送捕获到的请求。Relay 会打开编辑页，允许你修改 path、method 或 body 后再发送。"
+              )}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -690,7 +757,7 @@ export function LogDetail({
                 void handleReplay();
               }}
             >
-              {replaying ? "Replaying..." : "Replay exact"}
+              {replaying ? t("Replaying...", "正在重放...") : t("Replay exact", "原样重放")}
             </Button>
             <Button
               type="button"
@@ -699,7 +766,7 @@ export function LogDetail({
               disabled={replaying}
               onClick={() => setActiveTab("relay")}
             >
-              Open relay
+              {t("Open relay", "打开 Relay")}
             </Button>
           </div>
         </div>
@@ -710,13 +777,17 @@ export function LogDetail({
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="messages">
-            Messages {requestMessages.length > 0 && `(${requestMessages.length})`}
+            {t("Messages", "消息")} {requestMessages.length > 0 && `(${requestMessages.length})`}
           </TabsTrigger>
-          <TabsTrigger value="system">System Prompt</TabsTrigger>
-          {tools.length > 0 && <TabsTrigger value="tools">Tools ({tools.length})</TabsTrigger>}
-          <TabsTrigger value="params">Params</TabsTrigger>
-          <TabsTrigger value="response">Response</TabsTrigger>
-          <TabsTrigger value="raw">Raw</TabsTrigger>
+          <TabsTrigger value="system">{t("System Prompt", "系统 Prompt")}</TabsTrigger>
+          {tools.length > 0 && (
+            <TabsTrigger value="tools">
+              {t("Tools", "工具")} ({tools.length})
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="params">{t("Params", "参数")}</TabsTrigger>
+          <TabsTrigger value="response">{t("Response", "响应")}</TabsTrigger>
+          <TabsTrigger value="raw">{t("Raw", "原始数据")}</TabsTrigger>
           {showActions && <TabsTrigger value="relay">Relay</TabsTrigger>}
         </TabsList>
 
@@ -727,7 +798,7 @@ export function LogDetail({
             ))
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No messages found
+              {t("No messages found", "没有找到消息")}
             </p>
           )}
         </TabsContent>
@@ -739,7 +810,7 @@ export function LogDetail({
             </div>
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No system prompt found
+              {t("No system prompt found", "没有找到系统 prompt")}
             </p>
           )}
         </TabsContent>
@@ -765,12 +836,12 @@ export function LogDetail({
         </TabsContent>
 
         <TabsContent value="raw" className="mt-4 space-y-4">
-          <JsonBlock label="Relay Target" block={rawBlocks.relayTarget} />
-          <JsonBlock label="Request Headers" block={rawBlocks.requestHeaders} />
-          <JsonBlock label="Request Body" block={rawBlocks.requestBody} />
-          <JsonBlock label="Response Body (Full)" block={rawBlocks.responseBody} />
+          <JsonBlock label={t("Relay target", "Relay 目标")} block={rawBlocks.relayTarget} />
+          <JsonBlock label={t("Request headers", "请求头")} block={rawBlocks.requestHeaders} />
+          <JsonBlock label={t("Request body", "请求体")} block={rawBlocks.requestBody} />
+          <JsonBlock label={t("Response body (full)", "完整响应体")} block={rawBlocks.responseBody} />
           {log.is_streaming === 1 && (
-            <JsonBlock label="Streaming Chunks" block={rawBlocks.streamingChunks} />
+            <JsonBlock label={t("Streaming chunks", "流式分块")} block={rawBlocks.streamingChunks} />
           )}
         </TabsContent>
 

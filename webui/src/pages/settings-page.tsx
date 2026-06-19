@@ -24,6 +24,7 @@ import {
   type ProviderConfig,
   type ProviderName,
 } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { ArrowsClockwise, Copy, Eye, EyeSlash, FloppyDisk, Key, Trash } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
@@ -63,12 +64,16 @@ function toDraft(config: ProviderConfig): ProviderConfigDraft {
   };
 }
 
-async function copyText(value: string, label: string): Promise<void> {
+async function copyText(
+  value: string,
+  successMessage: string,
+  failureMessage: string
+): Promise<void> {
   try {
     await navigator.clipboard.writeText(value);
-    toast.success(`${label} copied`);
+    toast.success(successMessage);
   } catch {
-    toast.error("Copy failed");
+    toast.error(failureMessage);
   }
 }
 
@@ -81,7 +86,12 @@ function AccessKeyPanel({
   regenerating: boolean;
   onRegenerate: () => void;
 }) {
-  const accessKeyPlaceholder = "Generated after save";
+  const { t } = useI18n();
+  const accessKeyPlaceholder = t("Generated after save", "保存后生成");
+  const copyAccessKeyLabel = t("Copy access key", "复制访问 key");
+  const regenerateAccessKeyLabel = regenerating
+    ? t("Regenerating access key", "正在重新生成访问 key")
+    : t("Regenerate access key", "重新生成访问 key");
 
   return (
     <div className="grid min-w-0 gap-3 border border-primary/15 bg-primary/5 p-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
@@ -89,7 +99,7 @@ function AccessKeyPanel({
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">
             <Key data-icon="inline-start" />
-            Proxy access
+            {t("Proxy access", "代理访问")}
           </Badge>
           <Badge variant="outline" className="font-mono">
             {PROVIDER_PATHS[draft.provider]}
@@ -109,10 +119,17 @@ function AccessKeyPanel({
           type="button"
           variant="outline"
           size="icon-sm"
-          title="Copy access key"
-          aria-label="Copy access key"
+          title={copyAccessKeyLabel}
+          aria-label={copyAccessKeyLabel}
           disabled={!draft.access_key}
-          onClick={() => draft.access_key && void copyText(draft.access_key, "Access key")}
+          onClick={() =>
+            draft.access_key &&
+            void copyText(
+              draft.access_key,
+              t("Access key copied", "访问 key 已复制"),
+              t("Copy failed", "复制失败")
+            )
+          }
         >
           <Copy data-icon="inline-start" />
         </Button>
@@ -120,8 +137,8 @@ function AccessKeyPanel({
           type="button"
           variant="outline"
           size="icon-sm"
-          title={regenerating ? "Regenerating access key" : "Regenerate access key"}
-          aria-label={regenerating ? "Regenerating access key" : "Regenerate access key"}
+          title={regenerateAccessKeyLabel}
+          aria-label={regenerateAccessKeyLabel}
           disabled={regenerating}
           onClick={onRegenerate}
         >
@@ -157,20 +174,21 @@ function ProviderUpstreamForm({
   onHideApiKey: () => void;
   onSave: () => void;
 }) {
-  const [showApiKey, setShowApiKey] = useState(false);
+  const { t } = useI18n();
   const editingApiKey = !draft.api_key_configured || replacingApiKey;
+  const visibilityKey = `${draft.provider}:${editingApiKey ? "editing" : "saved"}`;
+  const [visibleApiKeyFor, setVisibleApiKeyFor] = useState<string | null>(null);
+  const showApiKey = visibleApiKeyFor === visibilityKey;
   const keyPlaceholder = draft.api_key_configured
-    ? "Paste replacement API key"
-    : "Paste upstream API key";
-  const revealApiKeyLabel = showApiKey ? "Hide API key" : "Show API key";
-
-  useEffect(() => {
-    setShowApiKey(false);
-  }, [draft.provider, editingApiKey]);
+    ? t("Paste replacement API key", "粘贴替换用 API key")
+    : t("Paste upstream API key", "粘贴上游 API key");
+  const revealApiKeyLabel = showApiKey
+    ? t("Hide API key", "隐藏 API key")
+    : t("Show API key", "查看 API key");
 
   const toggleApiKeyVisibility = async () => {
     if (showApiKey) {
-      setShowApiKey(false);
+      setVisibleApiKeyFor(null);
       if (!editingApiKey) {
         onHideApiKey();
       }
@@ -184,14 +202,16 @@ function ProviderUpstreamForm({
       }
     }
 
-    setShowApiKey(true);
+    setVisibleApiKeyFor(visibilityKey);
   };
 
   return (
     <div className="flex flex-col gap-3 border border-border/70 bg-muted/30 p-3">
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(260px,1fr)_minmax(180px,260px)]">
         <div className="flex flex-col gap-2">
-          <Label htmlFor={`${draft.provider}-base-url`}>Upstream endpoint</Label>
+          <Label htmlFor={`${draft.provider}-base-url`}>
+            {t("Upstream endpoint", "上游 endpoint")}
+          </Label>
           <Input
             id={`${draft.provider}-base-url`}
             value={draft.base_url}
@@ -200,7 +220,9 @@ function ProviderUpstreamForm({
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor={`${draft.provider}-default-model`}>Default model</Label>
+          <Label htmlFor={`${draft.provider}-default-model`}>
+            {t("Default model", "默认模型")}
+          </Label>
           <Input
             id={`${draft.provider}-default-model`}
             value={draft.default_model ?? ""}
@@ -213,7 +235,9 @@ function ProviderUpstreamForm({
 
       <div className="grid grid-cols-1 gap-3">
         <div className="flex flex-col gap-2">
-          <Label htmlFor={`${draft.provider}-api-key`}>Upstream API key</Label>
+          <Label htmlFor={`${draft.provider}-api-key`}>
+            {t("Upstream API key", "上游 API key")}
+          </Label>
           {editingApiKey ? (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
               <div className="grid grid-cols-[minmax(0,1fr)_auto]">
@@ -250,7 +274,7 @@ function ProviderUpstreamForm({
                   variant="outline"
                   onClick={onCancelReplaceApiKey}
                 >
-                  Cancel
+                  {t("Cancel", "取消")}
                 </Button>
               )}
             </div>
@@ -269,8 +293,8 @@ function ProviderUpstreamForm({
                   type="button"
                   variant="outline"
                   size="icon"
-                  title={revealingApiKey ? "Loading API key" : revealApiKeyLabel}
-                  aria-label={revealingApiKey ? "Loading API key" : revealApiKeyLabel}
+                  title={revealingApiKey ? t("Loading API key", "正在读取 API key") : revealApiKeyLabel}
+                  aria-label={revealingApiKey ? t("Loading API key", "正在读取 API key") : revealApiKeyLabel}
                   aria-pressed={showApiKey}
                   disabled={revealingApiKey}
                   onClick={() => void toggleApiKeyVisibility()}
@@ -283,7 +307,7 @@ function ProviderUpstreamForm({
                 </Button>
               </div>
               <Button type="button" variant="outline" onClick={onReplaceApiKey}>
-                Replace
+                {t("Replace", "替换")}
               </Button>
             </div>
           )}
@@ -293,7 +317,7 @@ function ProviderUpstreamForm({
       <div className="flex justify-end">
         <Button type="button" onClick={onSave} disabled={saving}>
           <FloppyDisk data-icon="inline-start" />
-          Save upstream
+          {t("Save upstream", "保存上游配置")}
         </Button>
       </div>
     </div>
@@ -315,11 +339,15 @@ function MappingEditor({
   onChange: (draft: MappingDraft) => void;
   onSave: () => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="grid min-w-0 gap-3 border border-border/70 p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
       <div className="grid min-w-0 gap-3 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-2">
-          <Label htmlFor={`${provider}-mapping-source`}>Request model</Label>
+          <Label htmlFor={`${provider}-mapping-source`}>
+            {t("Request model", "请求模型")}
+          </Label>
           <Input
             id={`${provider}-mapping-source`}
             value={draft.source_model}
@@ -329,7 +357,9 @@ function MappingEditor({
           />
         </div>
         <div className="flex min-w-0 flex-col gap-2">
-          <Label htmlFor={`${provider}-mapping-target`}>Upstream model</Label>
+          <Label htmlFor={`${provider}-mapping-target`}>
+            {t("Upstream model", "上游模型")}
+          </Label>
           <Input
             id={`${provider}-mapping-target`}
             value={draft.target_model}
@@ -346,7 +376,7 @@ function MappingEditor({
             checked={draft.enabled}
             onCheckedChange={(checked) => onChange({ ...draft, enabled: checked === true })}
           />
-          Enabled
+          {t("Enabled", "已启用")}
         </label>
         <Button
           type="button"
@@ -359,7 +389,7 @@ function MappingEditor({
             !draft.target_model.trim()
           }
         >
-          Save mapping
+          {t("Save mapping", "保存映射")}
         </Button>
       </div>
     </div>
@@ -375,10 +405,12 @@ function MappingList({
   onToggle: (mapping: ModelMapping) => void;
   onDelete: (id: number) => void;
 }) {
+  const { t } = useI18n();
+
   if (mappings.length === 0) {
     return (
       <div className="border border-dashed border-border/80 p-4 text-sm text-muted-foreground">
-        No model mappings.
+        {t("No model mappings.", "没有模型映射。")}
       </div>
     );
   }
@@ -392,14 +424,16 @@ function MappingList({
         >
           <div className="grid min-w-0 gap-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
             <code className="truncate font-mono text-xs">{mapping.source_model}</code>
-            <span className="hidden text-xs text-muted-foreground md:inline">to</span>
+            <span className="hidden text-xs text-muted-foreground md:inline">
+              {t("to", "到")}
+            </span>
             <code className="truncate font-mono text-xs text-muted-foreground">
               {mapping.target_model}
             </code>
           </div>
           <div className="flex items-center gap-1 lg:justify-end">
             <Badge variant={mapping.enabled ? "outline" : "destructive"}>
-              {mapping.enabled ? "Enabled" : "Disabled"}
+              {mapping.enabled ? t("Enabled", "已启用") : t("Disabled", "已禁用")}
             </Badge>
             <Button
               type="button"
@@ -407,14 +441,14 @@ function MappingList({
               size="xs"
               onClick={() => onToggle(mapping)}
             >
-              {mapping.enabled ? "Disable" : "Enable"}
+              {mapping.enabled ? t("Disable", "禁用") : t("Enable", "启用")}
             </Button>
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              title="Delete"
-              aria-label="Delete mapping"
+              title={t("Delete", "删除")}
+              aria-label={t("Delete mapping", "删除模型映射")}
               onClick={() => onDelete(mapping.id)}
             >
               <Trash data-icon="inline-start" />
@@ -471,6 +505,8 @@ function ProviderPanel({
   onToggleMapping: (mapping: ModelMapping) => void;
   onDeleteMapping: (id: number) => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <Card>
       <CardHeader className="border-b border-border/70">
@@ -501,7 +537,7 @@ function ProviderPanel({
         />
         <details className="group overflow-hidden border border-border/70">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-muted/30 px-3 py-2 text-xs font-medium outline-none hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
-            <span>Optional model mappings</span>
+            <span>{t("Optional model mappings", "可选模型映射")}</span>
             <Badge variant="outline">{mappings.length}</Badge>
           </summary>
           <div className="flex flex-col gap-3 border-t border-border/70 p-3">
@@ -542,6 +578,7 @@ function sortMappings(mappings: ModelMapping[]): ModelMapping[] {
 }
 
 export function SettingsPage() {
+  const { t } = useI18n();
   const [providerDrafts, setProviderDrafts] = useState<ProviderConfigDraft[]>([]);
   const [mappings, setMappings] = useState<ModelMapping[]>([]);
   const [mappingDrafts, setMappingDrafts] = useState(createMappingDrafts);
@@ -564,11 +601,11 @@ export function SettingsPage() {
       setMappings(sortMappings(modelMappings));
       setRevealedApiKeys({});
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load settings");
+      toast.error(error instanceof Error ? error.message : t("Failed to load settings", "设置加载失败"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadSettings();
@@ -608,14 +645,14 @@ export function SettingsPage() {
     try {
       const { api_key } = await fetchProviderApiKey(provider);
       if (!api_key) {
-        toast.error("No API key configured");
+        toast.error(t("No API key configured", "还没有配置 API key"));
         return false;
       }
 
       setRevealedApiKeys((current) => ({ ...current, [provider]: api_key }));
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load API key");
+      toast.error(error instanceof Error ? error.message : t("Failed to load API key", "API key 加载失败"));
       return false;
     } finally {
       setRevealingApiKeyProvider(null);
@@ -652,11 +689,15 @@ export function SettingsPage() {
       setReplacingApiKeyProvider((current) => (current === provider ? null : current));
       toast.success(
         options?.regenerateAccessKey
-          ? `${PROVIDER_LABELS[provider]} access key regenerated`
-          : `${PROVIDER_LABELS[provider]} saved`
+          ? t("{provider} access key regenerated", "{provider} 访问 key 已重新生成", {
+              provider: PROVIDER_LABELS[provider],
+            })
+          : t("{provider} saved", "{provider} 已保存", {
+              provider: PROVIDER_LABELS[provider],
+            })
       );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save provider");
+      toast.error(error instanceof Error ? error.message : t("Failed to save provider", "Provider 保存失败"));
     } finally {
       setSavingProvider(null);
       setRegeneratingProvider(null);
@@ -692,9 +733,9 @@ export function SettingsPage() {
         ...current,
         [provider]: emptyMappingDraft(),
       }));
-      toast.success("Mapping saved");
+      toast.success(t("Mapping saved", "映射已保存"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save mapping");
+      toast.error(error instanceof Error ? error.message : t("Failed to save mapping", "映射保存失败"));
     } finally {
       setSavingMapping(null);
     }
@@ -704,9 +745,9 @@ export function SettingsPage() {
     try {
       await deleteModelMapping(id);
       setMappings((current) => current.filter((mapping) => mapping.id !== id));
-      toast.success("Mapping deleted");
+      toast.success(t("Mapping deleted", "映射已删除"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to delete mapping");
+      toast.error(error instanceof Error ? error.message : t("Failed to delete mapping", "映射删除失败"));
     }
   };
 
@@ -724,9 +765,11 @@ export function SettingsPage() {
       setMappings((current) =>
         current.map((item) => (item.id === saved.id ? saved : item))
       );
-      toast.success(saved.enabled ? "Mapping enabled" : "Mapping disabled");
+      toast.success(
+        saved.enabled ? t("Mapping enabled", "映射已启用") : t("Mapping disabled", "映射已禁用")
+      );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update mapping");
+      toast.error(error instanceof Error ? error.message : t("Failed to update mapping", "映射更新失败"));
     }
   };
 
