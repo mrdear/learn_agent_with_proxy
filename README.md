@@ -30,17 +30,20 @@
 pnpm install
 ```
 
-启动后端代理：
+启动开发服务，带后端 watch 和前端 HMR：
+
+```bash
+pnpm dev
+```
+
+也可以拆成两个终端分别启动：
 
 ```bash
 pnpm dev:backend
-```
-
-启动前端：
-
-```bash
 pnpm dev:webui
 ```
+
+前端页面打开 `http://localhost:5173`，Vite 会把 `/api` 代理到后端。
 
 客户端 SDK 的 Base URL 指向：
 
@@ -52,7 +55,7 @@ http://localhost:3000/v1
 
 ```bash
 pnpm build
-pnpm start
+pnpm start:prod
 ```
 
 ## 环境变量

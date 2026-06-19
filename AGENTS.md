@@ -19,11 +19,12 @@
 ## 常用命令
 
 ```bash
+pnpm dev
 pnpm dev:backend
 pnpm dev:webui
 pnpm build:webui
 pnpm build
-pnpm start
+pnpm start:prod
 ```
 
 ## 核心规约

@@ -5,14 +5,17 @@
 ## 常用命令
 
 ```bash
+pnpm dev
 pnpm dev:backend
 pnpm dev:webui
 pnpm build:webui
 pnpm build
-pnpm start
+pnpm start:prod
 ```
 
-开发模式下，后端和前端分开启动。生产模式下，`pnpm start` 会构建前端、编译后端，并由后端托管前端静态资源。
+开发模式默认使用 `pnpm dev`，会同时启动后端 `tsx watch` 和前端 Vite HMR。前端页面打开 `http://localhost:5173`，Vite 会把 `/api` 代理到 `http://localhost:3000`。
+
+`pnpm start` 兼容为开发模式，等同于 `pnpm dev`。生产模式用 `pnpm start:prod`，会构建前端、编译后端，并由后端托管前端静态资源。
 
 ## 客户端配置
 

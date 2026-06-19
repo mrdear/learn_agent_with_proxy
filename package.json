@@ -3,7 +3,9 @@
   "scripts": {
     "build:webui": "pnpm --filter webui build",
     "build": "./scripts/build.sh",
-    "start": "./scripts/start.sh",
+    "dev": "bash ./scripts/dev.sh",
+    "start": "pnpm dev",
+    "start:prod": "bash ./scripts/prod.sh",
     "dev:backend": "pnpm --filter backend dev",
     "dev:webui": "pnpm --filter webui dev"
   },
