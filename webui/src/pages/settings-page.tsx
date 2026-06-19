@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import {
   deleteModelMapping,
   fetchModelMappings,
+  fetchProviderApiKey,
   fetchProviderConfigs,
   saveModelMapping,
   updateProviderSettings,
@@ -23,7 +24,7 @@ import {
   type ProviderConfig,
   type ProviderName,
 } from "@/lib/api";
-import { ArrowsClockwise, Copy, FloppyDisk, Key, Trash } from "@phosphor-icons/react";
+import { ArrowsClockwise, Copy, Eye, EyeSlash, FloppyDisk, Key, Trash } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
@@ -44,6 +45,7 @@ type ProviderConfigDraft = ProviderConfig & {
 };
 
 type MappingDraft = Omit<ModelMappingInput, "provider">;
+type RevealedApiKeys = Partial<Record<ProviderName, string | null>>;
 
 function emptyMappingDraft(): MappingDraft {
   return {
@@ -134,23 +136,56 @@ function ProviderUpstreamForm({
   draft,
   replacingApiKey,
   saving,
+  revealedApiKey,
+  revealingApiKey,
   onChange,
   onReplaceApiKey,
   onCancelReplaceApiKey,
+  onRevealApiKey,
+  onHideApiKey,
   onSave,
 }: {
   draft: ProviderConfigDraft;
   replacingApiKey: boolean;
   saving: boolean;
+  revealedApiKey: string | null | undefined;
+  revealingApiKey: boolean;
   onChange: (draft: ProviderConfigDraft) => void;
   onReplaceApiKey: () => void;
   onCancelReplaceApiKey: () => void;
+  onRevealApiKey: () => Promise<boolean>;
+  onHideApiKey: () => void;
   onSave: () => void;
 }) {
+  const [showApiKey, setShowApiKey] = useState(false);
   const editingApiKey = !draft.api_key_configured || replacingApiKey;
   const keyPlaceholder = draft.api_key_configured
     ? "Paste replacement API key"
     : "Paste upstream API key";
+  const revealApiKeyLabel = showApiKey ? "Hide API key" : "Show API key";
+
+  useEffect(() => {
+    setShowApiKey(false);
+  }, [draft.provider, editingApiKey]);
+
+  const toggleApiKeyVisibility = async () => {
+    if (showApiKey) {
+      setShowApiKey(false);
+      if (!editingApiKey) {
+        onHideApiKey();
+      }
+      return;
+    }
+
+    if (!editingApiKey) {
+      const revealed = await onRevealApiKey();
+      if (!revealed) {
+        return;
+      }
+    }
+
+    setShowApiKey(true);
+  };
 
   return (
     <div className="flex flex-col gap-3 border border-border/70 bg-muted/30 p-3">
@@ -181,16 +216,34 @@ function ProviderUpstreamForm({
           <Label htmlFor={`${draft.provider}-api-key`}>Upstream API key</Label>
           {editingApiKey ? (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <Input
-                id={`${draft.provider}-api-key`}
-                type="password"
-                value={draft.api_key}
-                placeholder={keyPlaceholder}
-                autoComplete="off"
-                onChange={(event) =>
-                  onChange({ ...draft, api_key: event.target.value, clear_api_key: false })
-                }
-              />
+              <div className="grid grid-cols-[minmax(0,1fr)_auto]">
+                <Input
+                  id={`${draft.provider}-api-key`}
+                  type={showApiKey ? "text" : "password"}
+                  value={draft.api_key}
+                  placeholder={keyPlaceholder}
+                  autoComplete="off"
+                  className="border-r-0 font-mono"
+                  onChange={(event) =>
+                    onChange({ ...draft, api_key: event.target.value, clear_api_key: false })
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  title={revealApiKeyLabel}
+                  aria-label={revealApiKeyLabel}
+                  aria-pressed={showApiKey}
+                  onClick={() => void toggleApiKeyVisibility()}
+                >
+                  {showApiKey ? (
+                    <EyeSlash data-icon="inline-start" />
+                  ) : (
+                    <Eye data-icon="inline-start" />
+                  )}
+                </Button>
+              </div>
               {draft.api_key_configured && (
                 <Button
                   type="button"
@@ -203,9 +256,32 @@ function ProviderUpstreamForm({
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <code className="truncate border border-border/70 bg-background px-2.5 py-2 font-mono text-xs">
-                {draft.api_key_hint ?? "************"}
-              </code>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto]">
+                <code
+                  className={cn(
+                    "flex h-8 items-center truncate border border-border/70 bg-background px-2.5 font-mono text-xs",
+                    showApiKey && "select-text"
+                  )}
+                >
+                  {showApiKey ? (revealedApiKey ?? "") : (draft.api_key_hint ?? "************")}
+                </code>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  title={revealingApiKey ? "Loading API key" : revealApiKeyLabel}
+                  aria-label={revealingApiKey ? "Loading API key" : revealApiKeyLabel}
+                  aria-pressed={showApiKey}
+                  disabled={revealingApiKey}
+                  onClick={() => void toggleApiKeyVisibility()}
+                >
+                  {showApiKey ? (
+                    <EyeSlash data-icon="inline-start" />
+                  ) : (
+                    <Eye data-icon="inline-start" />
+                  )}
+                </Button>
+              </div>
               <Button type="button" variant="outline" onClick={onReplaceApiKey}>
                 Replace
               </Button>
@@ -357,12 +433,16 @@ function ProviderPanel({
   loading,
   savingProvider,
   replacingApiKey,
+  revealedApiKey,
+  revealingApiKey,
   regeneratingAccessKey,
   savingMapping,
   onDraftChange,
   onSaveProvider,
   onReplaceApiKey,
   onCancelReplaceApiKey,
+  onRevealApiKey,
+  onHideApiKey,
   onRegenerateAccessKey,
   onMappingDraftChange,
   onSaveMapping,
@@ -375,12 +455,16 @@ function ProviderPanel({
   loading: boolean;
   savingProvider: boolean;
   replacingApiKey: boolean;
+  revealedApiKey: string | null | undefined;
+  revealingApiKey: boolean;
   regeneratingAccessKey: boolean;
   savingMapping: boolean;
   onDraftChange: (draft: ProviderConfigDraft) => void;
   onSaveProvider: () => void;
   onReplaceApiKey: () => void;
   onCancelReplaceApiKey: () => void;
+  onRevealApiKey: () => Promise<boolean>;
+  onHideApiKey: () => void;
   onRegenerateAccessKey: () => void;
   onMappingDraftChange: (draft: MappingDraft) => void;
   onSaveMapping: () => void;
@@ -406,9 +490,13 @@ function ProviderPanel({
           draft={draft}
           replacingApiKey={replacingApiKey}
           saving={savingProvider}
+          revealedApiKey={revealedApiKey}
+          revealingApiKey={revealingApiKey}
           onChange={onDraftChange}
           onReplaceApiKey={onReplaceApiKey}
           onCancelReplaceApiKey={onCancelReplaceApiKey}
+          onRevealApiKey={onRevealApiKey}
+          onHideApiKey={onHideApiKey}
           onSave={onSaveProvider}
         />
         <details className="group overflow-hidden border border-border/70">
@@ -461,6 +549,8 @@ export function SettingsPage() {
   const [regeneratingProvider, setRegeneratingProvider] = useState<ProviderName | null>(null);
   const [savingMapping, setSavingMapping] = useState<ProviderName | null>(null);
   const [replacingApiKeyProvider, setReplacingApiKeyProvider] = useState<ProviderName | null>(null);
+  const [revealingApiKeyProvider, setRevealingApiKeyProvider] = useState<ProviderName | null>(null);
+  const [revealedApiKeys, setRevealedApiKeys] = useState<RevealedApiKeys>({});
   const [loading, setLoading] = useState(true);
 
   const loadSettings = useCallback(async () => {
@@ -472,6 +562,7 @@ export function SettingsPage() {
       ]);
       setProviderDrafts(configs.map(toDraft));
       setMappings(sortMappings(modelMappings));
+      setRevealedApiKeys({});
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load settings");
     } finally {
@@ -494,6 +585,41 @@ export function SettingsPage() {
         draft.provider === nextDraft.provider ? nextDraft : draft
       )
     );
+  };
+
+  const hideRevealedApiKey = (provider: ProviderName) => {
+    setRevealedApiKeys((current) => {
+      if (!(provider in current)) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[provider];
+      return next;
+    });
+  };
+
+  const revealApiKey = async (provider: ProviderName): Promise<boolean> => {
+    if (provider in revealedApiKeys) {
+      return true;
+    }
+
+    setRevealingApiKeyProvider(provider);
+    try {
+      const { api_key } = await fetchProviderApiKey(provider);
+      if (!api_key) {
+        toast.error("No API key configured");
+        return false;
+      }
+
+      setRevealedApiKeys((current) => ({ ...current, [provider]: api_key }));
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load API key");
+      return false;
+    } finally {
+      setRevealingApiKeyProvider(null);
+    }
   };
 
   const saveProvider = async (
@@ -522,6 +648,7 @@ export function SettingsPage() {
         regenerate_access_key: options?.regenerateAccessKey,
       });
       updateDraft(toDraft(updated));
+      hideRevealedApiKey(provider);
       setReplacingApiKeyProvider((current) => (current === provider ? null : current));
       toast.success(
         options?.regenerateAccessKey
@@ -541,6 +668,7 @@ export function SettingsPage() {
     if (draft) {
       updateDraft({ ...draft, api_key: "", clear_api_key: false });
     }
+    hideRevealedApiKey(provider);
     setReplacingApiKeyProvider((current) => (current === provider ? null : current));
   };
 
@@ -616,12 +744,19 @@ export function SettingsPage() {
             loading={loading}
             savingProvider={savingProvider === draft.provider}
             replacingApiKey={replacingApiKeyProvider === draft.provider}
+            revealedApiKey={revealedApiKeys[draft.provider]}
+            revealingApiKey={revealingApiKeyProvider === draft.provider}
             regeneratingAccessKey={regeneratingProvider === draft.provider}
             savingMapping={savingMapping === draft.provider}
             onDraftChange={updateDraft}
             onSaveProvider={() => void saveProvider(draft.provider)}
-            onReplaceApiKey={() => setReplacingApiKeyProvider(draft.provider)}
+            onReplaceApiKey={() => {
+              hideRevealedApiKey(draft.provider);
+              setReplacingApiKeyProvider(draft.provider);
+            }}
             onCancelReplaceApiKey={() => cancelApiKeyReplace(draft.provider)}
+            onRevealApiKey={() => revealApiKey(draft.provider)}
+            onHideApiKey={() => hideRevealedApiKey(draft.provider)}
             onRegenerateAccessKey={() =>
               void saveProvider(draft.provider, { regenerateAccessKey: true })
             }

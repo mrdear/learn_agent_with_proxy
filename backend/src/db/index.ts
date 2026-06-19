@@ -476,6 +476,14 @@ export function getProviderConfigs(): ProviderConfigPublic[] {
   return rows.map(toPublicProviderConfig);
 }
 
+export function getProviderApiKey(provider: ProviderName): string | null {
+  const row = db
+    .prepare("SELECT api_key_cipher FROM provider_configs WHERE provider = @provider")
+    .get({ provider }) as Pick<ProviderConfigDbRow, "api_key_cipher"> | undefined;
+
+  return decryptConfigSecret(row?.api_key_cipher ?? null);
+}
+
 export function getProviderConfig(provider: ProviderName): ProviderRuntimeConfig | null {
   const row = db
     .prepare("SELECT * FROM provider_configs WHERE provider = @provider")

@@ -59,6 +59,10 @@ export interface ProviderConfigUpdate {
   regenerate_access_key?: boolean;
 }
 
+export interface ProviderApiKeyResponse {
+  api_key: string | null;
+}
+
 export interface ModelMapping {
   id: number;
   provider: ProviderName;
@@ -152,6 +156,16 @@ export async function fetchProviderConfigs(): Promise<ProviderConfig[]> {
   const res = await fetch(`${BASE}/provider-configs`);
   if (!res.ok) {
     throw await readError(res, "Failed to load provider configs");
+  }
+  return res.json();
+}
+
+export async function fetchProviderApiKey(
+  provider: ProviderName
+): Promise<ProviderApiKeyResponse> {
+  const res = await fetch(`${BASE}/provider-configs/${provider}/api-key`);
+  if (!res.ok) {
+    throw await readError(res, "Failed to load provider API key");
   }
   return res.json();
 }

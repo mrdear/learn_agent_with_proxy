@@ -6,6 +6,7 @@ import {
   getLogs,
   getModelMappings,
   getModels,
+  getProviderApiKey,
   getProviderConfigs,
   isProviderName,
   saveModelMapping,
@@ -149,6 +150,15 @@ api.get("/models", (c) => {
 
 api.get("/provider-configs", (c) => {
   return c.json(getProviderConfigs());
+});
+
+api.get("/provider-configs/:provider/api-key", (c) => {
+  const provider = c.req.param("provider");
+  if (!isProviderName(provider)) {
+    return c.json({ error: "Unsupported provider" }, 400);
+  }
+
+  return c.json({ api_key: getProviderApiKey(provider) });
 });
 
 api.put("/provider-configs/:provider", async (c) => {
